@@ -207,3 +207,6 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 /.github/fleet-runner-deploy.manifest
 /manufacturing/hole_diameter_ladder_r1.py
 /provisioning/srv3/user-data
+
+# worker scratch leg artifacts (operand lists, local logs) -- never in the repo
+scratch_leg/

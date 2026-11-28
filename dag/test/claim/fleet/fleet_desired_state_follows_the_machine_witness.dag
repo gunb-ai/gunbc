@@ -1,0 +1,261 @@
+module test.claim.fleet.fleet_desired_state_follows_the_machine_witness
+
+// THE MODEL SIDE, EXERCISED. Every value below is SUPPLIED by the claim (gunbc.design_argument::how_to_work:
+// a witness supplies values at its own boundary and does not re-run the production read). This witness does
+// NOT test the read's comparison -- that is gunbc.fleet.fleet_host_truth_read's own witness
+// (fleet_host_truth_read_witness) and row fleet-truth-per-host-read. What lives here is the row
+// fleet-truth-follows-the-machine's half: that the model's five claims each keep their own axis, that the
+// seam desired_state_follows_the_machine refuses where a read disagrees -- naming the arm that diverged --
+// and that a host with no current read is refused rather than admitted on the model alone
+// (gunbc.design_argument::fail_closed). The subject is gunbc.fleet.fleet_desired_state_claim, the model-side
+// module the plan gunbc.plans.desired_state_follows_the_machine cites but does not hold. The roster wiring
+// that CONSUMES this seam is a different, unstaffed row (fleet-truth-rosters-consume-the-read); these claims
+// stop at the seam on purpose.
+
+import std.types { Bool, NonEmptyStr, String }
+import std.nat { Nat }
+import std.list { distinct_by_key }
+import std.optional { Absent, Present }
+import std.algebra { string_contains }
+import std.measure { ByteSize, gibibyte, gibibyte_to_byte_size }
+import gunbc.fleet.fleet_host_truth_read {
+  HostTruthAxis, HostTruthValue, HostTruthRead, HostTruthObserved,
+  HostTruthVerdict, HostTruthFollowsDesiredState, HostTruthDiverges, HostTruthRefused, HostTruthNothingRead,
+  TruthSize, TruthCount, TruthMarking, TruthUnbounded,
+  TruthDeclaredHardwareEnumerates, TruthEnabledUnitHasItsHardware, TruthIdentityAnchoredNotAddressed,
+  TruthCapBindsDeclaredWorkingSet, TruthSlotSwapBackingDeclared,
+  host_truth_axis_rule, host_truth_divergence_locator, fleet_truth_admits_host,
+}
+import gunbc.fleet.fleet_desired_state_claim {
+  ModelClaims, EnumeratedHardwareClaim, EnabledUnitsClaim, HostKeyClaim, LeafCapClaim, SwapBackingClaim,
+  enabled_unit_marking, model_claims_axes_present, model_claims_expectations,
+  desired_state_follows_the_machine,
+}
+
+// SUPPLIED-VALUE HELPERS at this claim's boundary.
+fn size_bytes(gib: Nat) -> ByteSize { gibibyte_to_byte_size(g: gibibyte(count: gib)) }
+fn size_val(gib: Nat) -> HostTruthValue { TruthSize { size: size_bytes(gib: gib) } }
+fn count_val(n: Nat) -> HostTruthValue { TruthCount { count: n } }
+fn mark_val(text: String) -> HostTruthValue { TruthMarking { text: text } }
+fn unbounded_val() -> HostTruthValue { TruthUnbounded }
+fn obs(host: NonEmptyStr, axis: HostTruthAxis, value: HostTruthValue) -> HostTruthRead {
+  HostTruthObserved { host: host, axis: axis, observed: value, at_run: "0" as NonEmptyStr, receipt: "supplied by the claim" }
+}
+
+// CLAIM SETS, one axis at a time: the carrier's shape, written the way a roster would write it. Writing the
+// whole carrier in each specimen is what shows the property the type gives -- a set that names an axis twice
+// has no syntax (see the note above RED_a_drifted_axis_blocks_a_host_whose_other_axis_agrees).
+fn claims_hardware(count: Nat, declared_by: String) -> ModelClaims {
+  ModelClaims {
+    hardware: Present { value: EnumeratedHardwareClaim { count: count, declared_by: declared_by } },
+    units: Absent, identity: Absent, cap: Absent, swap: Absent,
+  }
+}
+
+fn claims_units(unit: String, hardware_enumerates: Bool, declared_by: String) -> ModelClaims {
+  ModelClaims {
+    hardware: Absent,
+    units: Present { value: EnabledUnitsClaim { unit: unit, hardware_enumerates: hardware_enumerates, declared_by: declared_by } },
+    identity: Absent, cap: Absent, swap: Absent,
+  }
+}
+
+fn claims_host_key(enrolled_fingerprint: String, declared_by: String) -> ModelClaims {
+  ModelClaims {
+    hardware: Absent, units: Absent,
+    identity: Present { value: HostKeyClaim { enrolled_fingerprint: enrolled_fingerprint, declared_by: declared_by } },
+    cap: Absent, swap: Absent,
+  }
+}
+
+fn claims_cap(working_set_gib: Nat, declared_by: String) -> ModelClaims {
+  ModelClaims {
+    hardware: Absent, units: Absent, identity: Absent,
+    cap: Present { value: LeafCapClaim { working_set: size_bytes(gib: working_set_gib), declared_by: declared_by } },
+    swap: Absent,
+  }
+}
+
+fn claims_swap(backing: HostTruthValue, declared_by: String) -> ModelClaims {
+  ModelClaims {
+    hardware: Absent, units: Absent, identity: Absent, cap: Absent,
+    swap: Present { value: SwapBackingClaim { backing: backing, declared_by: declared_by } },
+  }
+}
+
+// A host is admitted by a consumer only when the seam says the model and the machine agree. The
+// predicate is NOT re-implemented here -- it is the read module's own fleet_truth_admits_host, the
+// single authority for which arm admits (gunbc.design_argument::single_authority).
+fn admits(result: HostTruthVerdict) -> Bool {
+  fleet_truth_admits_host(verdict: result)
+}
+
+// THE ARM THAT BROKE IS NAMED. The verdict carries the typed comparison list, each holding its
+// HostTruthAxis, so the axis is never lost -- a consumer can match on it directly. What this helper adds
+// is the row's handback "saying which arm diverges" in human form: every diverged/refused comparison,
+// read aloud through the read module's OWN host_truth_divergence_locator, must mention the recognition
+// rule of the axis that broke. A divergence that had "lost its axis" -- collapsed to a bare no, or to a
+// string the model invented rather than the typed comparison -- would fail here. This is the same idiom
+// gunbc.fleet.fleet_host_truth_read's own witness (fleet_host_truth_read_witness) uses.
+fn names_axis(result: HostTruthVerdict, axis: HostTruthAxis) -> Bool {
+  let rule = host_truth_axis_rule(axis: axis)
+  match result {
+    HostTruthDiverges { host: _, divergences: cs } => cs.any(c => string_contains(s: host_truth_divergence_locator(comparison: c), pattern: rule))
+    HostTruthRefused { host: _, refusals: cs } => cs.any(c => string_contains(s: host_truth_divergence_locator(comparison: c), pattern: rule))
+    HostTruthFollowsDesiredState { host: _, compared: _, undeclared: _ } => false
+    HostTruthNothingRead { host: _, why: _ } => false
+  }
+}
+
+// THE FIVE CLAIMS ARE FIVE DISTINCT AXES, each carrying its own non-empty rule, and a fully populated
+// carrier declares each of them EXACTLY ONCE: five axes in, five distinct rules, and as many expectations
+// as axes -- no axis doubled by construction. This label is the executed half of the property that two
+// claims on one axis cannot be written (see the note below RED_a_drifted_axis_blocks_a_host_whose_other_axis_agrees).
+test fn the_model_holds_five_distinct_axes() -> Bool {
+  let claims = ModelClaims {
+    hardware: Present { value: EnumeratedHardwareClaim { count: 4, declared_by: "the serving layout's pool row" } },
+    units: Present { value: EnabledUnitsClaim { unit: "strata-expert-lock", hardware_enumerates: true, declared_by: "the unit file under systemd" } },
+    identity: Present { value: HostKeyClaim { enrolled_fingerprint: "SHA256:anchor", declared_by: "the enrolled host-key roster" } },
+    cap: Present { value: LeafCapClaim { working_set: size_bytes(gib: 56), declared_by: "the serving grant's slot" } },
+    swap: Present { value: SwapBackingClaim { backing: unbounded_val(), declared_by: "the runner memory envelope" } },
+  }
+  let axes = model_claims_axes_present(claims: claims)
+  let rules = axes.map(axis => host_truth_axis_rule(axis: axis))
+  axes.length() == 5
+    && rules.length() == 5
+    && rules.all(rule => rule != "")
+    && distinct_by_key(xs: rules, key: fn(rule) { rule }).length() == 5
+    && model_claims_expectations(host: "srv1" as NonEmptyStr, claims: claims).length() == 5
+}
+
+// RED AXIS 1 -- DESIRED STATE NAMES HARDWARE THAT NO LONGER ENUMERATES. butch, 2026-11-17: four A2s out of
+// PCI while the model still declared four. The seam diverges and says which arm.
+test fn RED_enumerated_hardware_no_longer_enumerating_diverges_and_names_its_arm() -> Bool {
+  let result = desired_state_follows_the_machine(
+    host: "butch" as NonEmptyStr,
+    claims: claims_hardware(count: 4, declared_by: "the serving layout's pool row"),
+    reads: [obs(host: "butch" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, value: count_val(n: 0))],
+  )
+  admits(result: result) == false && names_axis(result: result, axis: TruthDeclaredHardwareEnumerates)
+}
+
+// RED AXIS 2 -- AN ENABLED UNIT OVER HARDWARE THAT DOES NOT ENUMERATE. dan (reported as h11): the
+// expert-lock unit declares its hardware enumerating; the machine answers the hardware is absent.
+test fn RED_enabled_unit_over_absent_hardware_diverges_and_names_its_arm() -> Bool {
+  let claims = claims_units(unit: "strata-expert-lock", hardware_enumerates: true, declared_by: "the unit file under systemd")
+  // THE READ SIDE'S MARKING IS BUILT BY THE MODEL'S OWN MARKING AUTHORITY, not by a sentence invented at
+  // the call site. The enabled-unit axis relates markings by equality over the text, so what drifts in this
+  // witness must be the Bool the machine answers -- hardware present vs gone -- and not the wording of two
+  // prose versions nobody agreed on. A marking the test wrote by hand would pass or fail on spelling, which
+  // is the failure this row exists to prevent (gunbc.design_argument::single_authority).
+  let drifted = desired_state_follows_the_machine(
+    host: "dan" as NonEmptyStr,
+    claims: claims,
+    reads: [obs(host: "dan" as NonEmptyStr, axis: TruthEnabledUnitHasItsHardware, value: mark_val(text: enabled_unit_marking(unit: "strata-expert-lock", hardware_enumerates: false)))],
+  )
+  // The SAME claim over the marking the machine gives when the hardware IS there agrees, which is what makes
+  // the drift above the Bool rather than a string the test happened to write.
+  let agreeing = desired_state_follows_the_machine(
+    host: "dan" as NonEmptyStr,
+    claims: claims,
+    reads: [obs(host: "dan" as NonEmptyStr, axis: TruthEnabledUnitHasItsHardware, value: mark_val(text: enabled_unit_marking(unit: "strata-expert-lock", hardware_enumerates: true)))],
+  )
+  admits(result: drifted) == false
+    && names_axis(result: drifted, axis: TruthEnabledUnitHasItsHardware)
+    && admits(result: agreeing) == true
+}
+
+// RED AXIS 3 -- A PRESENTED KEY THAT IS NOT THE ENROLLED ANCHOR. butch .238 held another machine's host
+// key; the model anchors on the enrolled fingerprint and the machine presents another.
+test fn RED_presented_host_key_not_the_enrolled_anchor_diverges_and_names_its_arm() -> Bool {
+  let result = desired_state_follows_the_machine(
+    host: "butch" as NonEmptyStr,
+    claims: claims_host_key(enrolled_fingerprint: "SHA256:enrolled-anchor-AAA", declared_by: "the enrolled host-key roster"),
+    reads: [obs(host: "butch" as NonEmptyStr, axis: TruthIdentityAnchoredNotAddressed, value: mark_val(text: "SHA256:previous-occupant-BBB"))],
+  )
+  admits(result: result) == false && names_axis(result: result, axis: TruthIdentityAnchoredNotAddressed)
+}
+
+// RED AXIS 4 -- A BINDING LEAF CAP BELOW THE WORKING SET THE ROLE DECLARES. srv4's expert set under a
+// 40 GiB memory.high against a 56 GiB declared working set: the cap is the report's quietest tier.
+test fn RED_leaf_cap_below_declared_working_set_diverges_and_names_its_arm() -> Bool {
+  let result = desired_state_follows_the_machine(
+    host: "srv4" as NonEmptyStr,
+    claims: claims_cap(working_set_gib: 56, declared_by: "the serving grant's slot"),
+    reads: [obs(host: "srv4" as NonEmptyStr, axis: TruthCapBindsDeclaredWorkingSet, value: size_val(gib: 40))],
+  )
+  admits(result: result) == false && names_axis(result: result, axis: TruthCapBindsDeclaredWorkingSet)
+}
+
+// RED AXIS 5 -- SWAP BACKING DIFFERENT FROM WHAT THE ENVELOPE DECLARES. butch's 8 GiB swapfile against an
+// envelope that declares none (unbounded): the same drift in either direction.
+test fn RED_swap_backing_mismatch_diverges_and_names_its_arm() -> Bool {
+  let result = desired_state_follows_the_machine(
+    host: "butch" as NonEmptyStr,
+    claims: claims_swap(backing: unbounded_val(), declared_by: "the runner memory envelope"),
+    reads: [obs(host: "butch" as NonEmptyStr, axis: TruthSlotSwapBackingDeclared, value: size_val(gib: 8))],
+  )
+  admits(result: result) == false && names_axis(result: result, axis: TruthSlotSwapBackingDeclared)
+}
+
+// RED -- A HOST WITH A CLAIM BUT NO CURRENT READ IS REFUSED, NEVER ADMITTED ON THE MODEL ALONE. This is the
+// row's red_control in its sharpest form: admission without a current read fails closed, and the refusal
+// names the axis that went unread rather than passing silently.
+test fn RED_a_claim_with_no_current_read_refuses_rather_than_admits() -> Bool {
+  let result = desired_state_follows_the_machine(
+    host: "butch" as NonEmptyStr,
+    claims: claims_hardware(count: 4, declared_by: "the serving layout's pool row"),
+    reads: [],
+  )
+  admits(result: result) == false && names_axis(result: result, axis: TruthDeclaredHardwareEnumerates)
+}
+
+// ONE DRIFTED AXIS BLOCKS THE HOST EVEN WHEN ANOTHER AXIS AGREES: a clean host must not carry a drifted
+// one, and only the drifted arm is named -- the agreeing axis is not reported as a divergence.
+//
+// THIS IS ALSO WHERE THE DOUBLED-AXIS SPECIMEN USED TO LIVE, AND WHY IT NO LONGER CAN. A host really can
+// hold four NVIDIA cards AND two NICs, but the read answers the hardware axis ONCE per host and neither a
+// count nor a size carries the qualifier that tells the two claims apart, so two claims on that axis would
+// each be compared against whichever single read sat there -- one agreeing, one "diverging" over hardware
+// the machine never showed. That is a fabricated finding, which is not a safe direction to fail
+// (gunbc.design_argument::fail_closed, declared_intent). It used to be refused at runtime by this seam; the
+// refusal was a second detector, and gunbc.design_argument::earliest_unjustified_boundary names validation
+// where construction was available as the tell of a fork (review 99591). It is now UNSTATABLE: ModelClaims
+// holds each axis at most once, so no call site can write the pair. WHAT PROVES THE PROPERTY NOW is the type
+// declaration itself -- gunbc.fleet.fleet_desired_state_claim::ModelClaims, one optional per axis, compiled
+// on every round -- together with the executed label the_model_holds_five_distinct_axes above, which counts
+// the axes and the expectations a full carrier declares and fails if any axis is doubled or lost. This
+// witness's runtime arms therefore number seven, not eight; the missing arm has a named replacement rather
+// than being quietly deleted. Unlocking the pair -- pairing by host, axis AND qualifier, so the doubled
+// specimen becomes expressible and the read module's own duplicate-declaration arm decides -- is a standing
+// change to gunbc.fleet.fleet_host_truth_read (row fleet-truth-per-host-read), owed through the lane
+// manager and recorded in the integration register as #gunbc.integration_concern.fleet_host_truth_pairing_keys_on_axis_alone_so_two_claims_on_one_axis_cannot_be_told_apart::fleet_host_truth_pairing_keys_on_axis_alone_so_two_claims_on_one_axis_cannot_be_told_apart, not invented here against
+// another row's bytes.
+test fn RED_a_drifted_axis_blocks_a_host_whose_other_axis_agrees() -> Bool {
+  let result = desired_state_follows_the_machine(
+    host: "srv4" as NonEmptyStr,
+    claims: ModelClaims {
+      hardware: Present { value: EnumeratedHardwareClaim { count: 4, declared_by: "the serving layout's pool row" } },
+      units: Absent, identity: Absent,
+      cap: Present { value: LeafCapClaim { working_set: size_bytes(gib: 56), declared_by: "the serving grant's slot" } },
+      swap: Absent,
+    },
+    reads: [
+      obs(host: "srv4" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, value: count_val(n: 4)),
+      obs(host: "srv4" as NonEmptyStr, axis: TruthCapBindsDeclaredWorkingSet, value: size_val(gib: 40)),
+    ],
+  )
+  admits(result: result) == false
+    && names_axis(result: result, axis: TruthCapBindsDeclaredWorkingSet)
+    && names_axis(result: result, axis: TruthDeclaredHardwareEnumerates) == false
+}
+
+// A CLEAN HOST -- the read answers what the model claims -- agrees and would be admitted.
+test fn a_host_whose_read_matches_every_claim_agrees_and_admits() -> Bool {
+  let result = desired_state_follows_the_machine(
+    host: "srv3" as NonEmptyStr,
+    claims: claims_hardware(count: 4, declared_by: "the build roster's slot row"),
+    reads: [obs(host: "srv3" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, value: count_val(n: 4))],
+  )
+  admits(result: result) == true && names_axis(result: result, axis: TruthDeclaredHardwareEnumerates) == false
+}

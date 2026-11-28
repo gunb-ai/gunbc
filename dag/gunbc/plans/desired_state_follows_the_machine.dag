@@ -69,3 +69,32 @@ data desired_state_follows_the_machine_plan: Plan = Plan {
   },
   projection: PlanIsAuthorityOnly,
 }
+
+// WHERE THE HOW LIVES (cited, not contained -- gunbc.design_argument::planning_has_one_home,
+// plans_are_intentions): the model-side claims and the roster-refusal seam this intention asks for
+// are realized in #gunbc.fleet.fleet_desired_state_claim::ModelClaims (the claim set: the five claims,
+// one per axis) and its five claim types #gunbc.fleet.fleet_desired_state_claim::EnumeratedHardwareClaim,
+// #gunbc.fleet.fleet_desired_state_claim::EnabledUnitsClaim,
+// #gunbc.fleet.fleet_desired_state_claim::HostKeyClaim,
+// #gunbc.fleet.fleet_desired_state_claim::LeafCapClaim and
+// #gunbc.fleet.fleet_desired_state_claim::SwapBackingClaim, in
+// #gunbc.fleet.fleet_desired_state_claim::enabled_unit_marking (the one authority for the
+// marking form the unit axes compare) and
+// #gunbc.fleet.fleet_desired_state_claim::desired_state_follows_the_machine (the seam a roster
+// consumer calls) -- a fleet module, the same shape as sibling row fleet-truth-per-host-read, whose
+// verdict this module imports rather than re-declares
+// (#gunbc.fleet.fleet_host_truth_read::HostTruthVerdict). This plan stays a pure intention: it
+// never holds the how, so editing the prose here invalidates no compiler input and no production
+// consumer. A symbol cited
+// here is citable and decidable -- an arm this module does not declare is a stale citation
+// (gunbc.design_argument::single_authority).
+//
+// WHAT THE HOW DOES NOT YET REACH, said here so nobody reads it as complete for the fleet: the claim set
+// holds AT MOST ONE claim per axis. The report's own kind of host -- four GPUs AND two NICs under one
+// hardware claim, one slot carrying several caps -- cannot be written in it today, because the read pairs
+// a claim with a read by (host, axis) and carries no device or slot qualifier to tell two claims on one
+// axis apart. Closing that is a change to the read (row fleet-truth-per-host-read), owed through the lane
+// manager; until it lands, the doubled-axis specimen stays unstatable rather than guessed at
+// (gunbc.design_argument::fail_closed). That owed reconciliation is RECORDED, not remembered: it is a
+// row of the integration register, #gunbc.integration_concern.fleet_host_truth_pairing_keys_on_axis_alone_so_two_claims_on_one_axis_cannot_be_told_apart::fleet_host_truth_pairing_keys_on_axis_alone_so_two_claims_on_one_axis_cannot_be_told_apart, carrying the question, the obligations a widening
+// must keep, and the trigger that would climb a rung (continuous_generalization).

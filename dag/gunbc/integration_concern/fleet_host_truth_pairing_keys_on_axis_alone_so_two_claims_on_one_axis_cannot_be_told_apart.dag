@@ -1,0 +1,127 @@
+module gunbc.integration_concern.fleet_host_truth_pairing_keys_on_axis_alone_so_two_claims_on_one_axis_cannot_be_told_apart
+
+// One row of the integration-concern register. The roster derives the row from this file
+// (gunbc.integration_concern.roster); there is no list to append to. Filed by row
+// fleet-truth-follows-the-machine (PR #17236), which needed this capability and did not build it --
+// the model side refused in bounds instead, and review 99591 asked that the owed reconciliation live
+// here rather than only in a comment (gunbc.design_argument::continuous_generalization: "an unfinished
+// reconciliation is recorded, not remembered"; source_annotations: "a fact that must survive belongs in
+// a typed carrier").
+
+import std.types { CommitSha }
+import std.optional { Absent, Present }
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern {
+  ConcernSighting, IntegrationConcern, ExistingHome, PreservedObligation, RequirementUnestablished,
+  SuspectedCapabilityGap, CitesDeclaration, Triaged,
+}
+import gunbc.guarantee_stall { climbs_when }
+
+// The revision this sighting was made against: origin/main at the time the read was measured.
+data fleet_host_truth_pairing_keys_on_axis_alone_so_two_claims_on_one_axis_cannot_be_told_apart_sighting_revision: CommitSha = "89aed82ed892eefe81a97589fabd6ae60a9a315c"
+
+// THE FLEET CLAIMS MORE THAN ONE THING PER AXIS; THE READ CAN ONLY ANSWER ONE PER AXIS.
+//
+// WHAT THE MODEL WANTS TO SAY. A host really carries several facts of the same kind: srv1 enumerates
+// four NVIDIA cards AND two NICs; a serving host's slot can be bounded by a leaf memory.high AND a
+// swap backing that belongs to the same slot; the operator's breakage report of 2026-11-21 found
+// butch's four A2s already out of PCI while the repository still declared four, and dan's
+// strata-expert-lock holding GiB for A16s removed a month earlier -- both of which are claims about a
+// NAMED device, not about "the hardware" of a host. The read side has one value per (host, axis):
+// HostTruthRead carries an axis and no device or slot qualifier, and HostTruthPairing
+// (gunbc.fleet.fleet_host_truth_read::HostTruthPairing) compares read_axis with expectation_axis and
+// read_host with expectation_host and nothing else. So two claims of one kind on one host cannot be
+// told apart by the comparison: each would be judged against whichever single read sat on that axis,
+// one agreeing and one "diverging" over evidence the machine never gave -- a fabricated finding, which
+// is not a safe direction to fail (gunbc.design_argument::fail_closed).
+//
+// WHAT THE MODEL SIDE DID INSTEAD, AND WHY IT IS INTERIM. gunbc.fleet.fleet_desired_state_claim
+// declares ModelClaims with each axis OPTIONAL AND AT MOST ONCE, so the doubled specimen has no syntax
+// rather than a plausible wrong answer, and the seam refuses nothing: it passes the read module's
+// verdict through unchanged. That is construction, not a second detector -- the register holds exactly
+// one duplicate authority, host_truth_compare_roster's TruthDuplicateExpectation. The cost is stated in
+// the plan carrier (gunbc.plans.desired_state_follows_the_machine): the model as it stands is NOT
+// complete for the fleet, and this row is the record of what would complete it.
+//
+// THE DEFECT THIS ROW ALSO CARRIES, MEASURED AT THE REVISION BELOW. host_truth_compare_roster
+// (:498-506 at this revision) emits TruthDuplicateExpectation only for an axis that HAS a read, and
+// fleet_host_truth_verdict_for_host (:524-545) returns HostTruthDiverges as soon as any divergence
+// exists, before it examines the refusal class at all. So a duplicate-declaration refusal is invisible
+// to every consumer whenever any divergence coexists, and the consequence is exactly the class this
+// register is for: an instrument that had a refusal to report reports a verdict with no trace of it.
+// On the specimen host the consequence is a fabricated explanation rather than an unsafe admission --
+// the host still does not admit -- which is stated here so the row is neither overstated nor dropped.
+// It is a change to another row's bytes (fleet-truth-per-host-read, PR #17208 at review), escalated
+// through the lane manager to the planning owner, and it is NOT made here.
+//
+// WHY THE REQUIREMENT'S STANDING IS UNESTABLISHED. Nobody has asked for multi-claim-per-axis in the
+// abstract; what would settle it is a consumer that needs it. The named future consumer is the unstaffed
+// row fleet-truth-rosters-consume-the-read (admission to the remote-build and serving rosters): if a
+// roster admits srv1 on a hardware claim that cannot name WHICH hardware it counted, the pairing gap is
+// live in production rather than theoretical. Until such a roster exists, one-claim-per-axis costs
+// modeling completeness and no decision, so this row keeps the gap visible without licensing a widening
+// of the read's key ahead of the consumer that would need it.
+data fleet_host_truth_pairing_keys_on_axis_alone_so_two_claims_on_one_axis_cannot_be_told_apart: IntegrationConcern = IntegrationConcern {
+  identity: "fleet_host_truth_pairing_keys_on_axis_alone_so_two_claims_on_one_axis_cannot_be_told_apart",
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.fleet_host_truth_read", decl_name: "HostTruthPairing"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.fleet_host_truth_read", decl_name: "host_truth_compare_roster"),
+      decl_ref(module_path: "gunbc.fleet.fleet_host_truth_read", decl_name: "fleet_host_truth_verdict_for_host"),
+      decl_ref(module_path: "gunbc.fleet.fleet_desired_state_claim", decl_name: "ModelClaims"),
+    ],
+  },
+  question: "Which declaration carries the device and slot qualifier that lets one host claim four NVIDIA cards AND two NICs, or one slot carry a cap and a swap backing at once: a qualifier added to the read's pairing key (host, axis, qualifier), a claim key on the model side that the read answers axis-by-axis, or a finer axis per device class -- and which of the two read-module defects (the duplicate arm emitted only for an axis with a read, and Diverges outranking Refused so the refusal class is dropped) must be repaired first so a widened key cannot bury a refusal?",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.fleet_host_truth_read", decl_name: "HostTruthPairing"),
+    requirement: "A comparison that can hold SEVERAL claims of one kind on one host and tell them apart by what they are about -- a device class for the hardware axis, a slot for the cap and swap axes, a unit name for the enabled-unit axis (which carries its unit inside a marking string today and so compares as text). ModelClaims is deliberately one-claim-per-axis until such a key exists; widening the model without the key would compare a NIC count against a GPU count and report agreement or drift that the machine never showed.",
+    standing: RequirementUnestablished {
+      decided_by: "the first consumer that admits a host on more than one claim of a kind -- the roster admission of row fleet-truth-rosters-consume-the-read, or any host whose roster entry names devices per class rather than a host-level hardware count. If that consumer arrives, the qualifier is required and the pairing key changes; if the fleet's rosters stay per-host-with-one-claim-per-kind for a full quarter, this row closes as distinct with the scope examined being the two rosters and the plan carrier.",
+    },
+  },
+  sightings: [
+    ConcernSighting {
+      revision: fleet_host_truth_pairing_keys_on_axis_alone_so_two_claims_on_one_axis_cannot_be_told_apart_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.fleet.fleet_host_truth_read", decl_name: "host_truth_answer_against_declaration"),
+        },
+        tail: [
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.fleet.fleet_desired_state_claim", decl_name: "ModelClaims"),
+          },
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "test.claim.fleet.fleet_desired_state_follows_the_machine_witness", decl_name: "the_model_holds_five_distinct_axes"),
+          },
+        ],
+      },
+      account: "Found while building the model side of row fleet-truth-follows-the-machine. host_truth_answer_against_declaration relates each axis over one observed value and one expected value, with the axis the only key: a count axis compares counts, a marking axis compares marking text by EQUALITY, a cap axis asks cap >= declared working set, the swap axis compares sizes. Measured at the revision above: fleet_host_truth_verdict_for_host returns HostTruthDiverges when by_class.divergences is non-empty and only then looks at refusals, so the duplicate-declaration refusal host_truth_compare_roster produces never reaches a consumer that also has a divergence. The interim model shape -- ModelClaims, one optional per axis -- was chosen over a runtime duplicate check because a second place deciding the same thing is a fork (single_authority), and the choice is recorded here so the interim does not become permanent by forgetting. The witness label named above is what pins the interim shape behaviorally: a fully populated carrier declares five axes, five distinct rules and five expectations, and it fails if any axis is doubled or lost.",
+    },
+  ],
+  disposition: Triaged {
+    home: ExistingHome {
+      model: decl_ref(module_path: "gunbc.fleet.fleet_host_truth_read", decl_name: "HostTruthPairing"),
+    },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fleet.fleet_desired_state_claim", decl_name: "ModelClaims"),
+        control: Present {
+          value: decl_ref(module_path: "test.claim.fleet.fleet_desired_state_follows_the_machine_witness", decl_name: "the_model_holds_five_distinct_axes"),
+        },
+        statement: "when the pairing gains a qualifier, the carrier's one-claim-per-axis restriction must be RELAXED in the same change, not kept beside a new key: one duplicate authority (host_truth_compare_roster's TruthDuplicateExpectation) decides a doubled declaration, and a model-side guard next to a qualifier-aware key would be a second authority for the same decision",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fleet.fleet_host_truth_read", decl_name: "fleet_host_truth_verdict_for_host"),
+        control: Absent,
+        statement: "a refusal stays visible in the per-host verdict even when a divergence exists: the fold must not return the divergence class alone while a refusal-class comparison (including an unread axis or a duplicate declaration) sits in the same run, because the report's whole point is that a failed or refused reading must not be scored as quiet (gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent)",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fleet.fleet_desired_state_claim", decl_name: "enabled_unit_marking"),
+        control: Absent,
+        statement: "the enabled-unit marking keeps exactly one author until the axis carries a typed unit-and-state value: the read relates that axis by equality over the marking TEXT, so a second author of the spelling would decide the drift verdict by typography rather than by the machine",
+      },
+    ],
+    next: climbs_when(capability: "the read pairs a claim with a read by (host, axis, qualifier) -- or a named device/slot key on the model side that the read answers per claim -- and the claim carrier relaxes to many claims per axis in the same change, with the read module's own duplicate-declaration arm still the single place that decides a doubled declaration and the refusal class still reaching a consumer beside a divergence"),
+  },
+}
