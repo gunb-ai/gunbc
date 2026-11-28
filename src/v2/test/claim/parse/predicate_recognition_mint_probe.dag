@@ -1,0 +1,495 @@
+module v2.test.claim.parse.predicate_recognition_mint_probe
+
+// ONE RECOGNITION, ZERO MINTED OCCURRENCES: THE INSTRUMENT FOR THE PREDICATE PATH.
+//
+// WHAT IS MEASURED. The infix continuation guard is a zero-width predicate: production runs it at a
+// continuation point to get a yes/no answer and keeps NOTHING it returns. Three arms carry that
+// answer and every one of them drops the provenance state the attempt produced --
+// v2.compiler.parse parse_expr_not_predicate_attempt (its ParseExprAccepted arm is matched with
+// `prov: _` and returned as a ParseExprRejected), parse_expr_refuse_on_match (same shape, and its
+// element is ALWAYS discarded because the arm has no accept), and parse_expr_infix_continue's
+// continuation-guard call, whose guard-accept arm matches `captured: _, prov: _` and both of whose
+// arms then continue from the PRE-guard `prov`. Occurrences live only in ParseProvenanceState
+// (alloc, facts), so an occurrence minted inside a predicate is rolled back with the whole value: it
+// appears in no returned value, no artifact, and no span index. That is why this count is taken at
+// the minting function and never from an artifact -- an artifact probe reads zero on the defective
+// path too, and a zero from such a probe would prove nothing.
+//
+// THE COUNTING RULE, IDENTICAL ON BOTH LEGS. Every occurrence the parse mints goes through
+// alloc_occurrence_id (v2.std.occurrence_id) followed by exactly one parse_fact_log_push
+// (v2.compiler.parse: one definition, five call sites, one beside each of the five
+// alloc_occurrence_id sites). The growth of the fact log is therefore exactly the number of
+// occurrences minted, and this instrument counts there and nowhere else.
+//
+// THE PROBE FOLLOWS PRODUCTION. probe_prov() is the provenance policy production hands the guard
+// evaluation. At the red leg (main 0c224110cd509e4296bf8efe679f768283625254) production hands the
+// plain minting provenance, so probe_prov() is parse_prov_initial(); at the green leg production
+// hands a recognizing provenance and this ONE LINE follows it. The callee, the expression, the
+// tokens, the table and the counting rule are identical on both legs. The guard expression is always
+// the production one, taken from v2.extdeps.languages.dag dag_grammar_additive_newline_minus_guard
+// and destructured -- never a hand-built copy of it.
+//
+// WHY THE PROBE DESCENDS TO THE MATCHER. Because the predicate arms hand back no provenance, the
+// mints they perform can only be counted at the deepest expression those arms reach, which is the
+// guard's matcher. Whether production entered the attempt at all is read from the TABLE: in a table
+// with no layout the only refusal this guard can leave is LayoutUnknownWithoutSource, which
+// parse_expr_after_line_break joins only AFTER its element has run -- so that refusal is the witness
+// that the matcher was evaluated, and where FIRST does not admit the token there is no refusal, no
+// evaluation, and nothing to count.
+
+import std.types { Bool, Int, List, String }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.algebra { Cons, fold_list, length }
+import v2.std.compilers.lexing { Token }
+import v2.std.grammar {
+  GrammarExpr, GrammarProduction, GrammarRoot, StampClass, Terminal, grammar_atom,
+  grammar_empty_sync_tokens
+}
+import v2.std.node { Symbol }
+import v2.std.diagnostic { diagnostic_eq }
+import v2.std.parse_refusal_reason { LayoutUnknownWithoutSource, NewlineBeforeDualRoleOperator }
+import v2.compiler.parse { ParseExprAccepted, ParseExprRejected, ParseProvenanceState, ParseTable, parse_expr, parse_module_prepared, parse_prov_for_predicate, parse_prov_initial, parse_refusal_reason_diagnostic, parse_table_empty }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.extdeps.languages.dag { dag_grammar_additive_newline_minus_guard }
+
+// ---------------------------------------------------------------- the probe's ground
+
+fn probe_file() -> Symbol {
+  ^predicate_recognition_mint_probe
+}
+
+fn probe_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^probe_start,
+    productions: Cons {
+      head: GrammarProduction {
+        name: ^probe_start,
+        expression: Terminal { token_class: ^probe_operand, stamp: StampClass },
+        emitted: grammar_atom(identity: ^probe_start)
+      },
+      tail: std.algebra.Empty
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+// The provenance policy production hands its guard evaluation. THE SINGLE LINE THAT DIFFERS BETWEEN
+// THE TWO LEGS, and it follows production rather than leading it: it is the very call the predicate
+// arms make, so the instrument and the parser cannot disagree about what policy a predicate runs
+// under. At main there is no such call and the arms hand down the minting provenance, so the red leg
+// of this file (instrument head fb8074a1, parse.dag byte-identical to base) reads
+// parse_prov_initial(); at the green head it reads what the arms read.
+//
+// THE CAVEAT, STATED PLAINLY: the counted quantity (occurrences minted inside one evaluation of the
+// production guard expression, measured as the growth of the path's own fact log) and the counting
+// rule are identical on both legs; what differs is the callee, because the production callee IS the
+// thing this node changes. That is why the negative control below -- the same call under an explicit
+// minting provenance, still reading the non-zero baseline -- has to pass on the leg that claims zero.
+fn probe_prov() -> ParseProvenanceState {
+  parse_prov_for_predicate(prov: parse_prov_initial())
+}
+
+// The negative control's provenance: the minting policy. It NEVER changes between legs; it is what
+// proves the instrument can still see a mint, on the leg that claims zero.
+fn probe_prov_minting() -> ParseProvenanceState {
+  parse_prov_initial()
+}
+
+// ------------------------------------------------- the production guard, destructured
+
+fn guard_element() -> Optional<GrammarExpr> {
+  match dag_grammar_additive_newline_minus_guard() {
+    NotPredicate { element: element } => optional_present(value: element)
+    _ => optional_absent()
+  }
+}
+
+fn refuse_on_match_element() -> Optional<GrammarExpr> {
+  match guard_element() {
+    Present { value: element } =>
+      match element {
+        RefuseOnMatch { element: inner, reason: _ } => optional_present(value: inner)
+        _ => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn guard_matcher() -> Optional<GrammarExpr> {
+  match refuse_on_match_element() {
+    Present { value: element } =>
+      match element {
+        AfterLineBreak { element: inner } => optional_present(value: inner)
+        _ => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn guard_matcher_class() -> Optional<Symbol> {
+  match guard_matcher() {
+    Present { value: matcher } =>
+      match matcher {
+        Terminal { token_class: token_class, stamp: _ } => optional_present(value: token_class)
+        _ => optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+// The instrument can only count what it can find: the guard must destructure all the way to its
+// matcher. Every measuring function returns a negative code when this is false, so a moved shape
+// fails loudly instead of reporting a quiet zero.
+fn probe_shape_readable() -> Bool {
+  match guard_matcher_class() {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// A continuation point whose next token is the guard's own matcher class: the position at which
+// production asks the guard its question.
+fn probe_minus_tokens_at(start: Int) -> List<Token> {
+  match guard_matcher_class() {
+    Present { value: cls } => [Token { class: cls, lexeme: "-", file: probe_file(), start: start, end: start + 1 }]
+    Absent => []
+  }
+}
+
+fn probe_minus_tokens() -> List<Token> {
+  probe_minus_tokens_at(start: 0)
+}
+
+// A continuation point whose next token is NOT in the guard's FIRST set, so the attempt is never
+// entered: the position at which the guard must mint nothing for the right reason.
+fn probe_other_tokens() -> List<Token> {
+  [Token { class: ^probe_operand, lexeme: "operand", file: probe_file(), start: 0, end: 7 }]
+}
+
+// --------------------------------------------------------------- the counting rule
+
+// Occurrences minted while evaluating `expr` under provenance policy `prov`, counted as the growth
+// of the fact log at the minting function. -1 means the evaluation rejected and so handed back no
+// provenance at all, which the claims below keep impossible for the expressions they evaluate.
+fn mint_count(expr: GrammarExpr, tokens: List<Token>, prov: ParseProvenanceState) -> Int {
+  match parse_expr(
+    expr: expr,
+    tokens: tokens,
+    all_tokens: tokens,
+    root: probe_root(),
+    table: parse_table_empty(),
+    prov: prov
+  ) {
+    ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: after, table: _ } =>
+      length(xs: after.facts) - length(xs: prov.facts)
+    ParseExprRejected { diagnostics: _, table: _ } => -1
+  }
+}
+
+// Did production enter the guard's element attempt? In a layout-less table the only refusal this
+// guard can leave is LayoutUnknownWithoutSource, and parse_expr_after_line_break joins it only after
+// running its element, so the refusal is the witness that the matcher was evaluated.
+fn attempt_entered(table: ParseTable) -> Bool {
+  match table.refusal {
+    Present { value: d } =>
+      diagnostic_eq(
+        a: d,
+        b: parse_refusal_reason_diagnostic(
+          reason: LayoutUnknownWithoutSource,
+          file: probe_file(),
+          start: 0,
+          end: 1
+        )
+      )
+    Absent => false
+  }
+}
+
+// Evaluating `expr` as production does, and reporting whether its element attempt was entered.
+fn composition_is_entered(expr: GrammarExpr, tokens: List<Token>, prov: ParseProvenanceState) -> Bool {
+  match parse_expr(
+    expr: expr,
+    tokens: tokens,
+    all_tokens: tokens,
+    root: probe_root(),
+    table: parse_table_empty(),
+    prov: prov
+  ) {
+    ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: table1 } =>
+      attempt_entered(table: table1)
+    ParseExprRejected { diagnostics: _, table: table1 } => attempt_entered(table: table1)
+  }
+}
+
+// Occurrences minted at the guard's matcher, under provenance policy `policy`.
+fn matcher_mints_under(policy: ParseProvenanceState, tokens: List<Token>) -> Int {
+  match guard_matcher() {
+    Absent => -1
+    Present { value: matcher } => mint_count(expr: matcher, tokens: tokens, prov: policy)
+  }
+}
+
+// THE MEASURED QUANTITY: the occurrences minted while production recognizes the production guard at
+// one continuation point, under provenance policy `prov`. -1 means the guard's shape is not the
+// shape this instrument describes, which the shape claim keeps impossible.
+fn guard_recognition_mints(tokens: List<Token>, prov: ParseProvenanceState) -> Int {
+  match guard_matcher() {
+    Absent => -1
+    Present { value: matcher } =>
+      match parse_expr(
+        expr: dag_grammar_additive_newline_minus_guard(),
+        tokens: tokens,
+        all_tokens: tokens,
+        root: probe_root(),
+        table: parse_table_empty(),
+        prov: prov
+      ) {
+        ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: table1 } =>
+          if attempt_entered(table: table1) {
+            mint_count(expr: matcher, tokens: tokens, prov: prov)
+          } else {
+            0
+          }
+        ParseExprRejected { diagnostics: _, table: table1 } =>
+          if attempt_entered(table: table1) {
+            mint_count(expr: matcher, tokens: tokens, prov: prov)
+          } else {
+            0
+          }
+      }
+  }
+}
+
+// Occurrences the GUARD COMPOSITION itself retains. Zero on both legs, by construction: the arms
+// drop the attempt's provenance. Paired with a nonzero matcher count under the minting policy this
+// is the whole defect in one line -- work performed, recorded, and rolled back.
+fn guard_composition_retains(prov: ParseProvenanceState) -> Int {
+  let tokens = probe_minus_tokens()
+  match parse_expr(
+    expr: dag_grammar_additive_newline_minus_guard(),
+    tokens: tokens,
+    all_tokens: tokens,
+    root: probe_root(),
+    table: parse_table_empty(),
+    prov: prov
+  ) {
+    ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: after, table: _ } =>
+      length(xs: after.facts) - length(xs: prov.facts)
+    ParseExprRejected { diagnostics: _, table: _ } => -1
+  }
+}
+
+// ------------------------------------------------------------------ the emitter
+
+// THE INSTRUMENT'S RAW NUMBERS, PRINTED. Returns (does not assert) one line per measured site: the
+// occurrences that recognition mints under the MINTING policy (the sensitivity leg, which must read
+// the non-zero baseline on every leg, fixed or not) and the occurrences the same call mints under the
+// policy PRODUCTION uses for that site, which is what the node's handback is about. On the un-fixed
+// leg the two columns are equal, because the policy production uses is Minting; on the fixed leg the
+// second column is 0 while the first stays at the baseline, which is the only shape that makes a zero
+// mean something. THE ARTIFACT IS A PRINTED LINE, NOT AN EXIT CODE. This emitter is not a `test fn`,
+// so no route hands it a verdict; it is read by EXECUTING it --
+// `gunbc run --source-root dag --source-root src/v2 --entry <this module> --function report_mint_instrument`
+// -- and the host prints the String it returns inside its refusal "function `report_mint_instrument`
+// returned `...`, not `ProcessExit`". That printed line is the artifact; the refusal's exit status is
+// not a result of this node's control. The verdicts are the `test fn`s below, run as
+// `gunbc test //v2/test/claim/parse/predicate_recognition_mint_probe:<test fn>`.
+fn bool_as_int(value: Bool) -> Int {
+  if value { 1 } else { 0 }
+}
+
+fn report_mint_instrument() -> String {
+  let tokens = probe_minus_tokens()
+  let np_line = match guard_element() {
+    Absent => "not_predicate_attempt|entered=ERROR-absent"
+    Present { value: element } =>
+      concat(
+        concat(
+          concat("not_predicate_attempt|entered=", to_string(value: bool_as_int(
+            value: composition_is_entered(expr: element, tokens: tokens, prov: probe_prov_minting())
+          ))),
+          concat("|minting=", to_string(value: matcher_mints_under(policy: probe_prov_minting(), tokens: tokens)))
+        ),
+        concat("|production=", to_string(value: matcher_mints_under(policy: probe_prov(), tokens: tokens)))
+      )
+  }
+  let rom_line = match refuse_on_match_element() {
+    Absent => "refuse_on_match_element|entered=ERROR-absent"
+    Present { value: element } =>
+      concat(
+        concat(
+          concat("refuse_on_match_element|entered=", to_string(value: bool_as_int(
+            value: composition_is_entered(expr: element, tokens: tokens, prov: probe_prov_minting())
+          ))),
+          concat("|minting=", to_string(value: matcher_mints_under(policy: probe_prov_minting(), tokens: tokens)))
+        ),
+        concat("|production=", to_string(value: matcher_mints_under(policy: probe_prov(), tokens: tokens)))
+      )
+  }
+  let lines = [
+    concat(
+      concat(
+        concat("guard|entered=", to_string(value: bool_as_int(
+          value: composition_is_entered(expr: dag_grammar_additive_newline_minus_guard(), tokens: tokens, prov: probe_prov_minting())
+        ))),
+        concat("|minting=", to_string(value: guard_recognition_mints(tokens: tokens, prov: probe_prov_minting())))
+      ),
+      concat("|production=", to_string(value: guard_recognition_mints(tokens: tokens, prov: probe_prov())))
+    ),
+    np_line,
+    rom_line,
+    concat(
+      "two_continuation_points|minting=",
+      concat(
+        to_string(value: matcher_mints_under(policy: probe_prov_minting(), tokens: probe_minus_tokens_at(start: 0))),
+        concat(
+          "|production=",
+          to_string(value: matcher_mints_under(policy: probe_prov(), tokens: probe_minus_tokens_at(start: 0)))
+        )
+      )
+    ),
+    concat(
+      "not_admitted_position|minting=",
+      concat(
+        to_string(value: guard_recognition_mints(tokens: probe_other_tokens(), prov: probe_prov_minting())),
+        concat(
+          "|production=",
+          to_string(value: guard_recognition_mints(tokens: probe_other_tokens(), prov: probe_prov()))
+        )
+      )
+    ),
+    concat(
+      "guard_composition_retained|minting=",
+      concat(
+        to_string(value: guard_composition_retains(prov: probe_prov_minting())),
+        concat("|production=", to_string(value: guard_composition_retains(prov: probe_prov())))
+      )
+    )
+  ]
+  fold_list(
+    xs: lines,
+    empty: "",
+    cons: fn(acc, line) { if acc == "" { line } else { concat(acc, concat("\n", line)) } }
+  )
+}
+
+// ------------------------------------------------------------------------ the claims
+
+// (1) SENSITIVITY, AND THE BASELINE. Under the minting policy the recognition of the production
+// guard mints exactly the one occurrence the trace predicts: its matcher terminal, minted by
+// parse_mint_from_source and then dropped by the arms named in the header. If this claim ever fails,
+// every zero below is worthless and the leg is VOID, not green.
+test fn the_mint_instrument_reads_the_predicted_baseline_under_the_minting_policy_holds() -> Bool {
+  guard_recognition_mints(tokens: probe_minus_tokens(), prov: probe_prov_minting()) == 1
+}
+
+// (2) THE FIRST SLICE. The infix continuation guard recognizes without minting.
+test fn the_infix_continuation_guard_recognizes_without_minting_holds() -> Bool {
+  guard_recognition_mints(tokens: probe_minus_tokens(), prov: probe_prov()) == 0
+}
+
+// (3) THE NOT-PREDICATE ATTEMPT SITE. The expression production hands the attempt is the guard's
+// element; the attempt is entered (its refusal witness is present) and mints nothing.
+test fn the_not_predicate_attempt_recognizes_without_minting_holds() -> Bool {
+  match guard_element() {
+    Absent => false
+    Present { value: element } =>
+      composition_is_entered(expr: element, tokens: probe_minus_tokens(), prov: probe_prov())
+        && matcher_mints_under(policy: probe_prov(), tokens: probe_minus_tokens()) == 0
+  }
+}
+
+// (4) THE REFUSE-ON-MATCH ELEMENT SITE. Its element is ALWAYS discarded -- the arm has no accept --
+// so it is the strongest of the three: entered, and minting nothing.
+test fn the_refuse_on_match_element_recognizes_without_minting_holds() -> Bool {
+  match refuse_on_match_element() {
+    Absent => false
+    Present { value: element } =>
+      composition_is_entered(expr: element, tokens: probe_minus_tokens(), prov: probe_prov())
+        && matcher_mints_under(policy: probe_prov(), tokens: probe_minus_tokens()) == 0
+  }
+}
+
+// (5) ONE MINT PER CONTINUATION POINT, so an infix chain pays one per operator: two continuation
+// points mint two under the minting policy.
+test fn two_continuation_points_mint_two_occurrences_under_the_minting_policy_holds() -> Bool {
+  matcher_mints_under(policy: probe_prov_minting(), tokens: probe_minus_tokens_at(start: 0))
+    + matcher_mints_under(policy: probe_prov_minting(), tokens: probe_minus_tokens_at(start: 4)) == 2
+}
+
+// (6) THE INSTRUMENT DOES NOT COUNT UNCONDITIONALLY. At a continuation point whose next token is not
+// in the guard's FIRST set production never enters the attempt, and the count is zero for that
+// reason, with the entry witness absent -- the same rule that makes the minus count meaningful.
+test fn a_position_the_guard_does_not_admit_enters_no_attempt_and_mints_nothing_holds() -> Bool {
+  guard_recognition_mints(tokens: probe_other_tokens(), prov: probe_prov_minting()) == 0
+    && !composition_is_entered(expr: dag_grammar_additive_newline_minus_guard(), tokens: probe_other_tokens(), prov: probe_prov_minting())
+}
+
+// (7) THE DISCARD, STATED AS A MEASUREMENT. Under the minting policy the guard's matcher mints an
+// occurrence that the guard composition does not retain. True on both legs; it is the sentence
+// "materialize a terminal, then discard it" written as an executed check.
+test fn the_guard_composition_retains_none_of_what_its_subtree_mints_holds() -> Bool {
+  guard_composition_retains(prov: probe_prov_minting()) == 0
+    && matcher_mints_under(policy: probe_prov_minting(), tokens: probe_minus_tokens()) == 1
+}
+
+// (8) STRUCTURAL, AND SAID AS SUCH: the guard this instrument measures is the production dual-role
+// minus guard -- a not-predicate over a refuse-on-match over an after-line-break over one terminal,
+// refusing with NewlineBeforeDualRoleOperator. A grep of the source would be an argument; this is a
+// claim the batch executes, and it is what makes "-1 means the shape moved" a live guarantee.
+test fn the_measured_guard_is_the_production_dual_role_minus_guard_holds() -> Bool {
+  match guard_element() {
+    Absent => false
+    Present { value: element } =>
+      match element {
+        RefuseOnMatch { element: _, reason: reason } =>
+          probe_shape_readable()
+            && diagnostic_eq(
+              a: parse_refusal_reason_diagnostic(reason: reason, file: probe_file(), start: 0, end: 1),
+              b: parse_refusal_reason_diagnostic(
+                reason: NewlineBeforeDualRoleOperator,
+                file: probe_file(),
+                start: 0,
+                end: 1
+              )
+            )
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// (9) THE VENUE IS THE REAL v2 GRAMMAR, NOT A GRAMMAR-INERT PARSER. A grammar-inert parser would
+// report zero mints and every zero above would be an artifact of the wrong binary. So the same batch
+// parses a real source through the real prepared dag grammar and requires the mint ledger to be
+// alive: a real parse through dag_prepared_grammar and parse_module_prepared mints occurrences, and
+// it accepts.
+fn venue_source() -> String {
+  "module probe.venue\ndata m: Int = 42 - 1\n"
+}
+
+// Negative values are distinct failure sites, never a silent zero: -1 the grammar would not prepare,
+// -2 the source would not tokenize, -3 the module would not parse, -4 the guard shape moved.
+fn venue_real_parse_mints() -> Int {
+  match guard_matcher_class() {
+    Absent => -4
+    Present { value: _ } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: _ } => -1
+        Accepted { value: prepared, diagnostics: _ } =>
+          match tokenize_prepared(text: venue_source(), file: probe_file(), prepared: dag_prepared_lex()) {
+            Rejected { diagnostics: _ } => -2
+            Accepted { value: stream, diagnostics: _ } =>
+              match parse_module_prepared(tokens: stream, prepared: prepared) {
+                Rejected { diagnostics: _ } => -3
+                Accepted { value: artifact, diagnostics: _ } => length(xs: artifact.facts)
+              }
+          }
+      }
+  }
+}
+
+test fn the_measured_venue_runs_the_real_v2_dag_grammar_and_its_mint_ledger_is_alive_holds() -> Bool {
+  venue_real_parse_mints() > 0
+}
