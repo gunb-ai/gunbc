@@ -8,11 +8,23 @@ import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUn
 // committed generated artifact, generates each one once, compares, and reports a located finding
 // (gunbc.instruments.generated_artifact_gate run_generated_artifact_drift_gate). What it does not
 // have is a caller. Its roster (gunbc.ci.ci_spec gunbc_ci_gates, since moved to gunbc.commit_workflow) is
-// consumed by
-// gunbc.instruments.ci_gates run_ci_gates_all, and run_ci_gates_all is called by nothing -- no
-// workflow, no .dag program, no Rust entry point. The gate's own main() exists so a human can run
+// consumed by gunbc.instruments.ci_gates run_gate_list, and run_gate_list is called by exactly one thing:
+// that module's own main(), which no program imports. Measured on main 61fd694b51bb with hit counts:
+// run_gate_list appears in 1 file (its own declaration, ci_gates.dag:30, called at :40); exactly 1 file
+// imports gunbc.instruments.ci_gates at all -- gunbc.instruments.floor_effect_gate_witness, and only for
+// run_spec_gate, a different symbol; and that witness has 0 importers and 0 mentions under .github/**,
+// so the one consumer edge is itself unreached. gunbc.instruments.ci_gates is named in 0 files under
+// .github/**, 0 times in dag/gunbc/roadmap/required_floor.dag, and 0 times under src/**: no workflow, no
+// .dag program, no Rust entry point. The gate's own main() exists so a human can run
 // it, which is precisely the difference between a control and a control that is wired: the check
 // that would have caught the drift is a command someone must remember to type.
+//
+// HOW TO READ A CITATION HERE. An earlier draft of this row named the consumer
+// gunbc.instruments.ci_gates run_ci_gates_all, a declaration that does not exist: run_ci_gates_all has 0
+// hits anywhere in the repository except in this file's own prose. That is the same failure this row
+// describes, one floor down -- a control that reads as verified because a name was typed next to it. Every
+// name in this file was then re-read off main at the revision above, and the counts are printed inline so
+// the reader can reproduce a claim instead of trusting it.
 //
 // HOW IT BITES HERE. #15235 (486127ca2c87, 2026-10-28) changed a producer so that its output could
 // no longer be emitted at all; the fold refused and substituted its marker. Seven committed
@@ -53,7 +65,7 @@ data an_authored_gate_reached_by_no_execution_route: RecurringFailureMode = Recu
 
   evidence: [
     decl_ref(module_path: "gunbc.instruments.generated_artifact_gate", decl_name: "run_generated_artifact_drift_gate"),
-    decl_ref(module_path: "gunbc.instruments.ci_gates", decl_name: "run_ci_gates_all"),
+    decl_ref(module_path: "gunbc.instruments.ci_gates", decl_name: "run_gate_list"),
     decl_ref(module_path: "gunbc.commit_workflow", decl_name: "gunbc_ci_gates"),
   ],
 }
