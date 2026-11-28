@@ -619,6 +619,12 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
   // the one directory in the account's tree the converge must own INTO existence.
   let scratch_root = serving_leg_test(elevation: elevation, item: "scratch.root", target: target, context: context, probe: test_directory_command(path: d.scratch_root_dir))
   let scratch_root_mode = serving_leg_stat(item: "scratch.root.mode", target: target, context: context, stat_argv: stat_mode_argv(path: d.scratch_root_dir))
+  // The census recovery door LISTS this directory to establish the seat census. On a fresh host it is
+  // absent, which the door refuses as ComputeSeatsUnreadable (gunbc.compute.compute_attempt_slots_root:
+  // absent is not "no seats"). So its absence is a proved PresentAbsent the apply writes toward, and the
+  // census door is gated (census_door_gate) to defer until this directory is established present -- so the
+  // initial observe still forms a plan instead of stranding on an unread census.
+  let compute_attempts = serving_leg_test(elevation: elevation, item: "compute.attempts", target: target, context: context, probe: test_directory_command(path: d.compute_attempts_dir))
   let serve_binary = serving_leg_test(elevation: elevation, item: "seed.serve_binary", target: target, context: context, probe: test_executable_command(path: d.serve_binary))
   let checkout = serving_leg_test(elevation: elevation, item: "checkout", target: target, context: context, probe: test_directory_command(path: d.checkout_dir))
   // THE TOOLCHAIN PAIR, gated on the ACCOUNT (side-chat review follow-up): a confirmed-absent
@@ -706,7 +712,7 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
   // no door runs, the plan carries no recovery write, the receipt says so, and the next assessment —
   // with the checkout detached at the pin — asks the door. Never a fabricated empty census, and never
   // an unknown for a door that was simply not asked.
-  let seat_census = match census_door_gate(checkout_revision: checkout_revision_value, serve_binary: serve_binary, dispatched_revision: pin.dispatched_revision) {
+  let seat_census = match census_door_gate(checkout_revision: checkout_revision_value, serve_binary: serve_binary, compute_attempts: compute_attempts, dispatched_revision: pin.dispatched_revision) {
     CensusGateAsk => serving_leg_seat_census(elevation: elevation, target: target, context: context, d: d, uid: serving_uid)
     CensusGateDefer { reason: r } => RecoverCatalogLegDeferred { reason: r }
   }
@@ -734,6 +740,7 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     store_staging_mode: store_staging_mode,
     scratch_root: scratch_root,
     scratch_root_mode: scratch_root_mode,
+    compute_attempts: compute_attempts,
     serve_binary: serve_binary,
     checkout: checkout,
     toolchain: toolchain,
@@ -1040,6 +1047,26 @@ fn converge_scratch_root_directory(acc: ConvergeDraft, d: RemoteBuildServingDesi
   }
 }
 
+// The compute attempts directory: <instance>/compute/attempts, the directory the census recovery door
+// (work_provider_local::compute_recover_catalog_serving_cli) LISTS to establish the seat census. The door
+// itself refuses an absent listing as ComputeSeatsUnreadable (gunbc.compute.compute_attempt_slots_root --
+// that is the authority: absent is NOT "no seats"), so we never touch the door. The fix is at the earliest
+// unjustified boundary: the door's listing target simply does not exist on a fresh host until a converge
+// write makes it. It is created at the SAME rank (3, EnsureDirectory) and with the SAME owner/mode
+// authority as its parent, the scratch root (the serving account and its primary group, scratch_root_mode)
+// -- it lives inside the account's private compute tree, so no second mode or principal is introduced.
+fn converge_compute_attempts_directory(acc: ConvergeDraft, d: RemoteBuildServingDesired) -> ConvergeDraft {
+  ConvergeDraft {
+    writes: concat([EnsureDirectory {
+      path: d.compute_attempts_dir,
+      owner_user: d.account_name,
+      owner_group: d.account_group_name,
+      mode: d.scratch_root_mode,
+    }], acc.writes),
+    unhandled: acc.unhandled,
+  }
+}
+
 // The authorized_keys write carries the single forced-command line. It is only ever a
 // divergence when the line is renderable (serving_ak_deviations yields none otherwise),
 // but the field is Optional, so an absent line is treated as unhandled, never a blank write.
@@ -1323,6 +1350,7 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
       "store.root" => converge_store_directories(acc, d.store_root, d)
       "store.staging" => converge_store_directories(acc, d.store_staging, d)
       "scratch.root" => converge_scratch_root_directory(acc, d)
+      "compute.attempts" => converge_compute_attempts_directory(acc, d)
       "authorized_keys" => converge_authorized_keys(acc, d)
       "checkout" => converge_checkout(acc, d, pin)
       // The absence of the PINNED channel is remediated by `rustup toolchain install` as the account,
@@ -1604,17 +1632,19 @@ fn converge_as_user_outcome(kind: FleetLegKind, target: SshTarget, context: Flee
 
 // Whether the census door may be asked at all, decided over the READ values so a claim exercises the
 // gate without a host (witness_one_interface: the witness supplies the reads at the boundary). The door
-// is carried by TWO things it must exist to be asked: the serving CHECKOUT (the door lives in the
-// checkout's dag), and the INSTALLED SERVE BINARY (the door is run through that program). So it exists
-// only where the checkout stands AT the dispatched revision AND the binary is not proven absent; an
-// unestablished or refused revision defers too — a checkout whose revision is not settled cannot be
-// known to carry the door. DEFER is not UNKNOWN: nothing was read and refused (fail_closed reserves
-// unknown for that), and it is never an established-empty census.
+// is carried by THREE things it must exist to be asked: the serving CHECKOUT (the door lives in the
+// checkout's dag), the INSTALLED SERVE BINARY (the door is run through that program), and the account's
+// compute ATTEMPTS DIRECTORY (the door's census IS a Filesystem.List of that directory, which
+// gunbc.compute.compute_attempt_slots_root refuses as unread when it is absent). So it exists only where
+// the checkout stands AT the dispatched revision, the binary is not proven absent, and the attempts
+// directory is not proven absent; an unestablished or refused read defers too — a host whose carrier is
+// not settled cannot be known to carry the door. DEFER is not UNKNOWN: nothing was read and refused
+// (fail_closed reserves unknown for that), and it is never an established-empty census.
 type CensusGate
   = CensusGateAsk
   | CensusGateDefer { reason: String }
 
-fn census_door_gate(checkout_revision: Optional<ObservationAttempt<String, ServingLegFailure>>, serve_binary: ObservationAttempt<Bool, ServingLegFailure>, dispatched_revision: String) -> CensusGate {
+fn census_door_gate(checkout_revision: Optional<ObservationAttempt<String, ServingLegFailure>>, serve_binary: ObservationAttempt<Bool, ServingLegFailure>, compute_attempts: ObservationAttempt<Bool, ServingLegFailure>, dispatched_revision: String) -> CensusGate {
   let checkout_gate = match checkout_revision {
     Present { value: ObservationEstablished { observed: v } } => match v == dispatched_revision {
       true => CensusGateAsk
@@ -1639,7 +1669,20 @@ fn census_door_gate(checkout_revision: Optional<ObservationAttempt<String, Servi
     CensusGateDefer { reason: r } => CensusGateDefer { reason: r }
     CensusGateAsk => match serve_binary {
       ObservationEstablished { observed: false } => CensusGateDefer { reason: "the serving serve binary is not installed, so the census door — which the installed binary carries — does not exist to ask; the build-and-install write this assessment carries is what makes it exist, and the census waits for the assessment after it" }
-      _ => CensusGateAsk
+      // THE DOOR'S LISTING TARGET MUST ALSO EXIST. The door Filesystem.List's the account's compute attempts
+      // directory; gunbc.compute.compute_attempt_slots_root deliberately refuses that listing when the
+      // directory is absent as ComputeSeatsUnreadable (absent is NOT "no seats"). So a host whose attempts
+      // directory is PROVEN ABSENT is DEFERRED (not unknown) and the EnsureDirectory write this assessment
+      // carries is what makes it exist -- exactly the binary-absent deferral above, one carrier further in.
+      // A refused (unreadable) attempts presence read is NOT deferred: it falls to Ask so the door's own
+      // refusal becomes an unknown census (fail_closed reserves unknown for a refused read; absence is not
+      // that). Established present: the door lists a real (possibly empty) directory and settles on zero seats.
+      ObservationEstablished { observed: true } => match compute_attempts {
+        ObservationEstablished { observed: false } => CensusGateDefer { reason: "the serving account's compute attempts directory is not established, so the census door — whose Filesystem.List of that directory IS the census — has nothing to list; the EnsureDirectory write this assessment carries is what makes it exist, and the census waits for the assessment after it" }
+        ObservationEstablished { observed: true } => CensusGateAsk
+        ObservationRefused { cause: _ } => CensusGateAsk
+      }
+      ObservationRefused { cause: _ } => CensusGateAsk
     }
   }
 }
