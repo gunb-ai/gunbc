@@ -106,7 +106,7 @@ fn string_length(text: HostText) -> Nat {
 // THE BODY IS DEAD UNTIL THE ROW IS ON MAIN, as string_length's was: heal round 1 builds its generator from
 // main's stage0 mirrors, which carry no primitive_substring row until this lands, so a self-call here would
 // emit as bare Rust recursion. The fold keeps the emitted body total meanwhile; every call routes through the
-// row, so nothing executes it. It is LINEAR anyway (DESIGN section 6: a cost-shape defect is fixed regardless of
+// row, so nothing executes it. It is LINEAR anyway (#gunbc.design_argument::how_to_work: a cost-shape defect is fixed regardless of
 // reach; review 91819): the count still to keep travels in the accumulator rather than being re-measured, kept
 // scalars are prepended, and the one reverse at the end restores source order. Trigger: primitive_substring is
 // on main; the follow-up replaces the body with the self-call substring(text: text, start: start, end: end), and

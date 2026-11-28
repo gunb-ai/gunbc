@@ -199,7 +199,7 @@ fn tailscale_auth_key_approval_wire(approval: TailscaleAuthKeyApproval) -> Strin
 // THE DATE AN EXPIRY IS, REUSED RATHER THAN RE-MINTED: extdeps.units.iso8601_calendar::Iso8601CivilDate
 // is already the corpus authority for a proleptic-Gregorian civil date -- built by checked parsers and
 // ordered through that module's own day-count algorithm -- and an auth key's expiry IS such a date: the
-// day the operator read off the admin console. DESIGN §2: minting a fresh authority for a concept that
+// day the operator read off the admin console. #gunbc.design_argument::minimize_redundancy: minting a fresh authority for a concept that
 // already exists is a failed decomposition -- this module keeps no date type of its own.
 //
 // THE RUNG, STATED EXACTLY (review 95863; gunbc.design_argument::guarantee_ladder -- "a type name,

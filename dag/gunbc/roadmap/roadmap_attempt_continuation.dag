@@ -40,7 +40,7 @@ import std.types { Bool, String, Int, List, EpochSecs, NonEmptyStr }
 import std.algebra { length }
 // THE ONE AUTHORITY for "a worker's run is dead: the named manager reports no such unit AND the current
 // boot began after the hold was acquired" (gunbc#16210). The continuation folds its verdict -- it never
-// re-derives that proof (DESIGN §2 single authority). DurableHoldHolderLiveness is the authority's OUTPUT type.
+// re-derives that proof (#gunbc.design_argument::minimize_redundancy single authority). DurableHoldHolderLiveness is the authority's OUTPUT type.
 import gunbc.systemd_unit_invocation_liveness { DurableHoldHolderLiveness, HolderObservedDead, HolderObservedLive, HolderLivenessUnobservable }
 import gunbc.roadmap.roadmap_refused_retry {
   RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, RefusedRetryUnreadable, refused_retry_exhausted_reason,
@@ -86,9 +86,9 @@ import gunbc.roadmap.roadmap_session_placement { SessionWorkerOrdinalReading, se
 // THE WORKTREE STANDING IS THE SHARED ATTEMPT-WORKTREE OBSERVER (AttemptWorktreeObservation, from
 // gunbc.roadmap.roadmap_workflow_progress) -- there is exactly ONE observer of "does this attempt's worktree
 // stand, and is it usable", reused verbatim by the belt's resume arm and by this plan so the two can never
-// disagree about the same directory (review 91395, DESIGN §3 nicknaming: a fork is a correctness concern).
+// disagree about the same directory (review 91395, #gunbc.design_argument::single_authority nicknaming: a fork is a correctness concern).
 // The submission capture and the recovery record live INSIDE the worktree; when it is not present they were NOT
-// read, and the plan must not pretend they are 'absent' or 'none' (DESIGN §5: a fabricated default is a hard
+// read, and the plan must not pretend they are 'absent' or 'none' (#gunbc.design_argument::fail_closed: a fabricated default is a hard
 // reject). The observer's three states, read not inferred:
 //   AttemptWorktreePresent    -- present and usable; the decision never consumes the path, so it is ignored.
 //   AttemptWorktreeAbsent     -- its absence is ESTABLISHED from a SUCCEEDED observation (filesystem_io's
@@ -110,11 +110,11 @@ type BranchStanding
   | BranchUnknown { reason: String }
 
 // HOW THE PRIOR ATTEMPT'S WORKTREE STANDS -- and ONLY the facts that could be read given that standing.
-// This is a SUM, not a flat record, on purpose (DESIGN 5: "stronger than catching a wrong state is making
+// This is a SUM, not a flat record, on purpose (#gunbc.design_argument::fail_closed: "stronger than catching a wrong state is making
 // it unwritable -- correctness by construction, not validation"). The submission capture and the recovery
 // record live INSIDE the worktree, so they can be read ONLY while it is present; the durable branch standing
 // is the substitute ONLY once it is reaped. A flat record let the belt pair a reaped worktree with a
-// FABRICATED placeholder capture (DESIGN 5: "a fabricated default ... is a hard reject") and let a consumer
+// FABRICATED placeholder capture (#gunbc.design_argument::fail_closed: "a fabricated default ... is a hard reject") and let a consumer
 // read a field it never populated, treating a placeholder as a real reading. Each fact now exists only in the
 // arm that could have read it, so an impossible pairing (a reaped tree WITH a real capture; a present tree
 // WITH a branch standing consulted) is unwritable rather than ruled out by convention and match ORDER alone.
@@ -129,7 +129,7 @@ type WorktreeStanding
   | WorktreeReaped { path: String, branch_head: BranchStanding }
   // Presence could NOT be established -- the root was unlistable, the subject refused, or a live tree's head
   // could not be read. Neither the capture nor the branch is trusted; the decision refuses, never restores onto
-  // a possibly-live directory (DESIGN 5 filesystem_io: absence is established only by a listing that succeeded).
+  // a possibly-live directory (#gunbc.design_argument::fail_closed filesystem_io: absence is established only by a listing that succeeded).
   | WorktreeUnknown { path: String, cause: String }
 
 // THE TYPED OPERATOR DISPOSITION on a prior worker that the host proof cannot settle. It is a HUMAN act, admitted
@@ -254,11 +254,11 @@ type ContinuationPlan
   | ReviewRetry { reason: String, attempt_key: String }
   | AlreadyComplete { reason: String }
   // Refuse carries BOTH a typed cause (so a consumer matches the DISTINCTION without parsing prose -- DESIGN
-  // §4c "belongs in a typed carrier", §5 "fails with a typed, located diagnostic") AND a human-readable reason
+  // §4c "belongs in a typed carrier", §#gunbc.design_argument::fail_closed "fails with a typed, located diagnostic") AND a human-readable reason
   // (the belt shows it verbatim; it is a rendering, never the discriminator). The cause is the class; the
   // reason is its sentence. Before this, each cause travelled as an in-band "BranchAbsent: …" text tag inside
   // a bare String, and witnesses grep'd that prose to recover a distinction the model should have carried
-  // (review 91440; §5 "a check restating a constraint the model already carries is a second representation").
+  // (review 91440; §#gunbc.design_argument::fail_closed "a check restating a constraint the model already carries is a second representation").
   | Refuse { cause: RefuseCause, reason: String }
 
 // THE TYPED CAUSE of a Refuse: the distinct reasons the decision already tells apart, each its own variant so
@@ -272,8 +272,8 @@ type RefuseCause
   | CaptureOwed { reason: String }
   // SegmentDamaged -- a ledger segment sits in WorkflowSegmentStopped, a state that segment does not inhabit
   // (only the agent segment has a round budget to stop on). The WHICH-SEGMENT distinction is carried by the
-  // REUSED WorkflowSegmentKind coproduct (DESIGN 4c: a closed set belongs in a typed carrier, not a String;
-  // DESIGN 2/3: reuse the existing segment identity rather than mint a parallel SegmentKind).
+  // REUSED WorkflowSegmentKind coproduct (#gunbc.design_argument::source_annotations: a closed set belongs in a typed carrier, not a String;
+  // #gunbc.design_argument::minimize_redundancy/3: reuse the existing segment identity rather than mint a parallel SegmentKind).
   | SegmentDamaged { segment: WorkflowSegmentKind }
   | LedgerUnobservable { reason: String }
   // RetryExhausted / RetryLedgerUnreadable -- the belt's bounded retry of an infrastructure-refused verification
@@ -396,7 +396,7 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
             // directory lists but its head could not be read (a git fault on a LIVE worktree). This is not
             // the reaped case: it must never be restored onto, because a still-present worktree may hold
             // uncommitted live work that a restore-from-branch would clobber or silently omit. A read that
-            // failed is unknown, and unknown is refused (DESIGN §5: runtime uncertainty -> typed refusal;
+            // failed is unknown, and unknown is refused (#gunbc.design_argument::fail_closed: runtime uncertainty -> typed refusal;
             // filesystem_io: absence is established only by a listing that succeeded). The belt's own
             // re-observe is the remedy, not a guessed spawn.
             Refuse { cause: WorktreeUnobserved { cause }, reason: join(["could not establish how the prior attempt ", prior.attempt_key, "'s worktree stands, so the lineage decides nothing rather than restoring onto a possibly-live directory: ", cause], "") }
@@ -417,7 +417,7 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
           // is held by the belt's commit lane itself (belt_capture_absence_for_attempt reads the producer's
           // own commit record and settles it), not by inventing a 'legacy' reading the observation cannot
           // support: nothing in this observation can tell an owed-now capture from an old one, so the
-          // decision refuses and waits rather than fabricating the distinction (DESIGN §5).
+          // decision refuses and waits rather than fabricating the distinction (#gunbc.design_argument::fail_closed).
           CaptureNotAttempted { reason } =>
             Refuse { cause: CaptureOwed { reason }, reason: join(["the prior attempt ", prior.attempt_key, " has ended but its submission capture is still owed (", reason, "), so whether its branch holds a declared candidate has not been read; the belt's commit lane settles it, and CONTINUE waits for that capture rather than starting a new attempt from a branch head that would omit work the prior worker had not committed"], "") }
           CaptureForHead { capture: c } =>
@@ -611,7 +611,7 @@ fn continuation_next_attempt(prior: PriorExecutionObservation, why: String) -> C
 // read; the branch carries the work). LAB BUG #2: after a reap the belt can only act by restoring, so joining
 // forever on an owed segment would itself be the block the bug forbids. The complete / in-flight / damaged
 // outcomes are NOT here -- they are the SHARED cascade arms (AlreadyComplete / AlreadyRunning / Refuse), so a
-// change to segment semantics is made in ONE place (review 91390, DESIGN §6b). THIS IS THE NEXT-ATTEMPT (NEW
+// change to segment semantics is made in ONE place (review 91390, #gunbc.design_argument::root_generalization). THIS IS THE NEXT-ATTEMPT (NEW
 // KEY) REAPED PATH: it mints a fresh attempt off the branch for a lineage that ENDED without a candidate. It is
 // DISTINCT from the same-key ContinuationPlan.Restore, which recovers a STILL-LIVE attempt under its own key.
 fn continuation_reaped_next_attempt(prior: PriorExecutionObservation, why: String) -> ContinuationPlan {
@@ -642,7 +642,7 @@ fn continuation_bounded_detail(detail: String) -> String {
 // keeps the work and lets the worker try again on top of it, which is the whole point of the verb.
 // WHAT THE WALK DOES WHEN A SEGMENT IS ABSENT (its belt obligation was never recorded). The branch is read
 // from the standing the caller already matched -- there is NO reaped: Bool to lie with, so a present-worktree
-// caller cannot claim a reap (DESIGN 5: a check restating a constraint the model carries is a second
+// caller cannot claim a reap (#gunbc.design_argument::fail_closed: a check restating a constraint the model carries is a second
 // representation of it; here the standing is the ONE source). After a REAP the belt can only act by restoring
 // the worktree from the branch head, so it continues with a fresh attempt off the branch; on a LIVE tree the
 // segment is merely OWED, so the lineage is JOINED and the belt performs the obligation, nothing spawning.

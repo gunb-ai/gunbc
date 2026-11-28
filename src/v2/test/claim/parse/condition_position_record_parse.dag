@@ -38,7 +38,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //   - elseless_if_with_tail is THE RED: refused before the fix (token remainder at the tail),
 //     parses after it; the tree-shape witness pins the reading (the if owns exactly one block,
 //     the tail is a separate sibling statement), so the claim asserts the ROUTE and not only the
-//     answer (DESIGN 5).
+//     answer (#gunbc.design_argument::fail_closed).
 //   - then_branch_record is THE SECOND RED: `if c then R { s } else d` refused under the old
 //     guard although the then-branch has no block slot and the record reading is the only one
 //     that fits; it parses now, and the tree-shape witness shows zero block productions under

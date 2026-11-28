@@ -786,7 +786,7 @@ data openai_text_completion_object_wire: String = "text_completion"
 //   `json_number_lexeme_unchecked` coercion, and the checked constructor `json_number_lexeme` returning
 //   Optional. A where-BRAND carries nominal identity only -- `std.types`' `brand` yields a
 //   `WherePredicateMarker`, which is never evaluated as a refinement -- so no validation is claimed by
-//   the type: the check lives in the constructor, which is DESIGN section 4's ruling
+//   the type: the check lives in the constructor, which is #gunbc.design_argument::closed_grounded_substrate's ruling
 //   gunbc.design_ruling where_refinements_retire_for_checked_constructors -- "where-refinements are
 //   retired in favour of checked constructors returning `Optional`". That is why this is not spelled
 //   `String where openai_text_completion_object_is_documented`: `std.types`' `NonEmptyStr` is still
@@ -984,7 +984,7 @@ data structural_coverage_gap_openai_text_completion_members: List<CoverageClosur
 
 // No module reads the text-completion shapes yet, and the consumer is named rather than assumed: the
 // same serving-path read that the approved plan gunbc.plans.fabric_serving_router puts in its S3
-// decisions, on whichever endpoint the client called. Tracked as debt (DESIGN section 3c) so an unread
+// decisions, on whichever endpoint the client called. Tracked as debt (#gunbc.design_argument::consumption) so an unread
 // model cannot be deleted quietly, and so its absence is visible rather than implied by the endpoint
 // existing.
 data openai_text_completion_wire_frontier_rows: List<FrontierRow> = [

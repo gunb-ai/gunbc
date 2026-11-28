@@ -598,7 +598,7 @@ fn spool_role_directory_shape(kind: SpoolKind, role: SpoolRole) -> SpoolDirector
 // ============================================================================================================
 // THE EFFECT LAYER. Every spool operation below is a decision of the pure model above realized by ONE rename (or one
 // create-only write), judged from a fresh observation of the key across the spool's roles. A caller holds a
-// SpoolStore and a SpoolEntryKey; it spells no stage, no stage path and no separator (DESIGN section 3).
+// SpoolStore and a SpoolEntryKey; it spells no stage, no stage path and no separator (#gunbc.design_argument::single_authority).
 // ============================================================================================================
 
 type SpoolStore {
@@ -1004,8 +1004,8 @@ fn spool_queue_refuse_foreign(store: SpoolStore, name: String) -> SpoolForeignOu
   }
 }
 
-// FRONTIERS (declared, consumed by a named later change, DESIGN 3c). Annotations, not rows: nothing reads them, and
-// a String row that no fold reads is the dead data of DESIGN 4c. HostSpoolStage is cut and its consumers moved.
+// FRONTIERS (declared, consumed by a named later change, #gunbc.design_argument::consumption). Annotations, not rows: nothing reads them, and
+// a String row that no fold reads is the dead data of #gunbc.design_argument::source_annotations. HostSpoolStage is cut and its consumers moved.
 //  - answers/: the reply record keyed to a request (publication and attempt-unit spools). Trigger: the publication
 //    spool migrates onto spool_queue; the answer store is then modeled as its own sealed face.
 //  - writers reader: live_deploy.emit and apply_legs derive the unit pending/claimed and publication pending directory

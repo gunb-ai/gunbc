@@ -64,10 +64,10 @@ type NotDerivedSite
 // this node DECIDEDLY PRODUCES NO VALUE. It is not ignorance -- the judgment is made, and its content is
 // that there is no value to read (the else-less Branch at the v2.std.node table: two positionals, the
 // BranchElseSlot Absent). It is not a type either: nothing inhabits it, so no Unit is coined for it and
-// DESIGN 4's vocabulary stays closed. Every match on this coproduct must decide the new arm, which is why
+// #gunbc.design_argument::closed_grounded_substrate's vocabulary stays closed. Every match on this coproduct must decide the new arm, which is why
 // the arm is a sibling and not a site under GroundingNotDerived: under the not-derived arm the default is
 // the counted frontier, so a consumer that forgot the site would turn a decided answer back into counted
-// ignorance (DESIGN 5). Fail-closed by construction: a consumer that owes a value refuses with
+// ignorance (#gunbc.design_argument::fail_closed). Fail-closed by construction: a consumer that owes a value refuses with
 // ^infer_branch_else_less_as_value, and the ONLY consumer that admits it is the statement Bind, whose
 // binder slot is Absent and which therefore owes no value. No wildcard arm over this coproduct may absorb
 // it; where one exists it is replaced by explicit arms.

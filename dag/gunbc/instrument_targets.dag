@@ -648,7 +648,7 @@ fn roster_import_sweep_controls_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "roster-import-sweep-controls" } }
 }
 
-// THE REAL ROUTE BEHIND THE CONTROLS' SUPPLIED INPUTS (DESIGN 3, the pairing obligation): the companion derivation, the
+// THE REAL ROUTE BEHIND THE CONTROLS' SUPPLIED INPUTS (#gunbc.design_argument::witness_one_interface, the pairing obligation): the companion derivation, the
 // home closure and the selecting-call entry executed once over the real std sources, each line compared to the value the
 // controls label is supplied (v2.workflow.roster_import_sweep roster_import_sweep_real_route_inhabitance). Its own label so
 // the controls stay on supplied inputs; dispatched on the fleet like the controls.

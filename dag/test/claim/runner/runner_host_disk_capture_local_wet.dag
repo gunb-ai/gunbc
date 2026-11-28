@@ -27,7 +27,7 @@ import gunbc.runner.runner_host_disk_capture {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE INHABITANCE HALF OF test.claim.runner.runner_host_disk_capture_witness (DESIGN section 3, the pairing
+// THE INHABITANCE HALF OF test.claim.runner.runner_host_disk_capture_witness (#gunbc.design_argument::witness_one_interface, the pairing
 // obligation): the hermetic file hands the disk state designed consoles; these claims run the real producers. Local-wet
 // for the reason test.claim.machine_intake.mtcollins1_census_image_local_wet gives: shell.Exec.RunArgv and the
 // filesystem carry no mock_response, and the subject is a real process's output and a real file. Nothing leaves the

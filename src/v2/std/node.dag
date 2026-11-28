@@ -837,10 +837,10 @@ fn bind_positional_slot(ordinal: Int) -> BindSlot {
 // slot absent -- for the Bind that is the binder (a statement Bind owns no value), for the Branch the else
 // arm (an else-less if). The two arities could not diverge, because the absent slot IS the encoding of "no
 // binder" and "no else": a behavior admitting a different arity set would be a different fact, and no
-// consumer asks the two tables about arity separately (DESIGN 6b: the second local implementation of one
+// consumer asks the two tables about arity separately (#gunbc.design_argument::root_generalization: the second local implementation of one
 // rule is the trigger to generalize it, and under 6b "no answer is a reject"). A consumer that preflights
 // a WHOLE node asks branch_positional_shape_admitted rather than counting children beside the table
-// (DESIGN 3: the arity fact lives where the roles live). There is no whole-Bind twin: no consumer asks that
+// (#gunbc.design_argument::single_authority: the arity fact lives where the roles live). There is no whole-Bind twin: no consumer asks that
 // question -- every Bind site reads a named slot through bind_slot_target, or numbers ordinals through
 // bind_positional_slot_in_arity -- and a check with no consumer is a second API for a question nobody asks.
 fn positional_arity_admitted(n: Node) -> Bool {
@@ -1143,7 +1143,7 @@ fn loop_positional_child_count(children: List<Edge>) -> Int {
   positional_child_count(children: children)
 }
 
-// WHAT EACH EDGE OF A LOOP MEANS, read in exactly one place (gunbc.plans.for_while_loop_sugar (deleted 2026-11-08) §2.2).
+// WHAT EACH EDGE OF A LOOP MEANS, read in exactly one place (gunbc.plans.for_while_loop_sugar, deleted 2026-11-08; its positional numbering died with it).
 // The positional children are the iterated body. ^loop_domain_edge targets the value iterated, which
 // is evaluated ONCE and outside the iteration. ^loop_bound_edge targets the termination measure.
 // ^loop_carrier_edge targets the loop-carried state's BINDER, never a value; the carried state's

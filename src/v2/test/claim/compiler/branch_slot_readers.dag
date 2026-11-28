@@ -435,7 +435,7 @@ test fn bsr_target_refuses_a_non_bool_literal_in_the_condition_slot() -> Bool {
 
 // The slot table separates "no else" (two positionals: Absent at the else slot only) from "malformed" (Absent
 // at every slot). A route that reported both with the shape reason would fuse the two causes the table just
-// split (DESIGN 5), so each value route names the cause it actually hit, and the malformed controls keep the
+// split (#gunbc.design_argument::fail_closed), so each value route names the cause it actually hit, and the malformed controls keep the
 // shape reason.
 
 fn bsr_branch_two_positional_value() -> Node {

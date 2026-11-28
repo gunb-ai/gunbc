@@ -253,7 +253,7 @@ fn program_branch_arm(node: Node, slot: BranchSlot) -> Outcome<Node> {
 // The else arm of a Branch the preflight below has already admitted. The malformed shapes are refused there,
 // so an Absent else slot HERE is the else-less shape (two positional children), not a malformed node: it
 // refuses with its own reason, because calling a well-formed else-less Branch malformed would fuse two
-// causes the slot table separates (DESIGN 5). The interpreter has no statement sequence to continue into at
+// causes the slot table separates (#gunbc.design_argument::fail_closed). The interpreter has no statement sequence to continue into at
 // this point; that continuation is what the statement-form lowering will add.
 fn program_branch_else_selection(node: Node) -> Outcome<Optional<Node>> {
   match branch_slot_target(n: node, slot: BranchElseSlot) {

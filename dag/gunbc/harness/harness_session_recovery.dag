@@ -483,7 +483,7 @@ type SessionResumability
 // continuation's ENDING standing: a reclaimed worktree makes the continuation Refused (its capture cannot be
 // read), and gating the restore on that Refused standing would cycle -- missing tree => Refused => unknown =>
 // restore refuses => tree stays missing. ENDEDNESS (read by the claim release via belt_lineage_standing) and
-// RESUMABILITY (read here) are DIFFERENT facts, each derived in exactly one place (DESIGN §3: a fact lives in
+// RESUMABILITY (read here) are DIFFERENT facts, each derived in exactly one place (#gunbc.design_argument::single_authority: a fact lives in
 // exactly one place). A request-pending lineage with an interrupted tool call is NOT resumable -- its effects
 // are not established, so it is not a restore candidate either: the decision Holds on it and the tree is left.
 fn session_recovery_resumability(recovery: SessionRecovery) -> SessionResumability {

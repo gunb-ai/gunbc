@@ -2067,7 +2067,7 @@ fn eval_control_frame_if_agreeing(
 // else arm on the path where the condition does not select the then arm: there is no arm to continue
 // with, and that is a well-formed answer, not a refusal (v2.std.node answers the absent else slot). Who
 // may see Absent is decided by the consumers: the binder-absent Bind proceeds without a value; every
-// consumer that owes a value refuses (DESIGN 5 -- no value is minted for a node whose decided fact is
+// consumer that owes a value refuses (#gunbc.design_argument::fail_closed -- no value is minted for a node whose decided fact is
 // that it produces none).
 fn eval_control_choose(
   site: Node,
@@ -2363,7 +2363,7 @@ fn eval_statement_effect(
 }
 
 // THE ELSE-LESS BRANCH IN A DISCARDED POSITION: the SAME selection path as the value row
-// (eval_branch_selection -- one condition route, one chooser call, DESIGN 6b), and only the continuation
+// (eval_branch_selection -- one condition route, one chooser call, #gunbc.design_argument::root_generalization), and only the continuation
 // differs. PRESENT(arm) evaluates the arm and drops its value; ABSENT evaluates nothing, and the Bind's
 // body follows, which is what "the statement ran or did not run and the sequence continues" means. A
 // refusal from the arm, or from the chooser, propagates: nothing here swallows one.
@@ -2409,7 +2409,7 @@ fn eval_branch_effect_eval(
 
 // ONE PATH THROUGH A BRANCH'S SELECTION: evaluate the condition, then ask the interpretation's chooser.
 // Both the value row and the effect row call this; only what they do with the answer differs, so the
-// condition route and the chooser call cannot drift apart (DESIGN 6b: a generalization beside surviving
+// condition route and the chooser call cannot drift apart (#gunbc.design_argument::root_generalization: a generalization beside surviving
 // leaves is a second path).
 fn eval_branch_selection(
   node: Node,

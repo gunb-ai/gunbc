@@ -61,7 +61,7 @@ import v2.std.text { String }
 // THE SOURCE POPULATION is every module the declared namespace rows store under the bound trees
 // (`enumerate_bound_modules`, the population `parse-population` walks). Each is read, and a module
 // whose text contains the marker spelling is LEXED -- not parsed: an annotation is a lexical capture
-// (DESIGN 4c), so the check needs the comment channel and nothing the parser adds. Each capture's raw
+// (#gunbc.design_argument::source_annotations), so the check needs the comment channel and nothing the parser adds. Each capture's raw
 // lexeme goes through the one extractor, std.annotation_reference annotation_references. Only the
 // extracted sites are kept, so memory follows the citations and not the population.
 //

@@ -354,7 +354,7 @@ test fn a_reclaimed_claim_reopens_on_the_same_slot_at_the_next_generation_and_a_
 // ── M3: THE SINGLE LINEAGE-ENDED GATE ON CLAIM RELEASE ──────────────────────────────────────────
 // A worker's UNIT finishing is NOT the lineage ending. The claim pass may release a worktree ONLY for a lineage
 // that has genuinely ENDED; a resumable worker whose unit ended keeps its claim, so its tree is never reclaimed
-// out from under a session that will resume or be restored (operator ruling M3, DESIGN §5 fail-closed). The
+// out from under a session that will resume or be restored (operator ruling M3, #gunbc.design_argument::fail_closed fail-closed). The
 // release reads exactly ONE derivation (LineageStanding, derived by belt_lineage_standing over the single
 // ContinuationPlan). These two controls drive the classifier to the gated arm -- a REAL observed placement
 // (attempt_open slot + a real placement record) with the unit reading Finished -- and flip ONLY that derivation.
