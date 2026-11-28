@@ -14,7 +14,7 @@ module gunbc.compute.remote_build_serving_setup
 //
 // EVERY FIELD IS READ FROM AN EXISTING AUTHORITY, never restated as a literal:
 //   account  -> gunbc.fleet.fleet_posix_accounts (uid/gid/shell/home/supplementary)
-//   paths    -> gunbc.compute.remote_build::remote_build_serving_instance
+//   paths    -> gunbc.compute.remote_build_serving_identity::remote_build_serving_instance
 //   ledger   -> gunbc.compute.host_capacity::host_capacity_home_directories_admitted (PR 4's module;
 //              the ADMITTED spelling — see remote_build_serving_desired and finding A2 of the
 //              side-chat review of 2026-11-16: a candidate host's serving posture is the POST-admission one)
@@ -54,6 +54,7 @@ import gunbc.compute.remote_build {
 // ledger posture from the same row (it cannot import THIS module: the setup reaches host_capacity).
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving_candidate }
 import gunbc.compute.host_capacity { host_capacity_home_directories_admitted, user_work_slice_memory_max_for_host, compute_root }
+import gunbc.compute.compute_attempt_slots_root { compute_attempts_path }
 // The user-work slice ceiling authority (the reservation row, never a seat count) and the reader's own
 // cgroup-cap judgment (unit_bounds::user_work_slice_cgroup_admission → observed_cgroup_bound) that
 // serving_user_work_slice_deviations settles on, plus the slice's canonical unit name.
@@ -635,6 +636,19 @@ type RemoteBuildServingDesired {
   scratch_root_dir: String
   scratch_root_mode: FileMode
 
+  // The compute ATTEMPTS directory: the census recovery door
+  // (gunbc.compute.work_provider_local::compute_recover_catalog_serving_cli) LISTS the compute attempt
+  // seats to establish the seat census, and that listing is derived from
+  // gunbc.compute.compute_attempt_slots_root::compute_attempts_path (the module owning the single `attempts`
+  // member declaration). This field is THAT accessor's value -- not a compute_root ++ "attempts"
+  // re-derivation -- so the door's listing target and this write's target share one source
+  // (single_authority / minimize_redundancy). The door's listing is what needs the directory to EXIST:
+  // gunbc.compute.compute_attempt_slots_root deliberately refuses an absent attempts directory as
+  // ComputeSeatsUnreadable (absent is NOT "no seats"), so on a fresh host the census can never settle
+  // until this write exists. Its owner/mode ride the scratch root's authority (the serving account,
+  // scratch_root_mode): it lives inside the account's private compute tree, so no second mode is minted.
+  compute_attempts_dir: String
+
   // component 9: the account's authorized_keys (mode 0600), and the single
   // forced-command line the host must carry. none when the host's line is
   // unrenderable — exactly the serve-time refusal, surfaced at plan time so a host
@@ -908,6 +922,13 @@ fn remote_build_serving_desired(host: HostIdentity) -> RemoteBuildServingDesired
     // instance, the same NonEmptyStr the serve route's provider reads. One authority, one path.
     scratch_root_dir: compute_root(instance: instance) as String,
     scratch_root_mode: scratch_root_mode,
+    // The attempts dir is the OWNER's path, not a re-derivation: the census recovery door lists the
+    // compute attempt seats through gunbc.compute.work_provider_local -> compute_seat_store, which derives
+    // the flat seat from gunbc.compute.compute_attempt_slots_root::compute_attempts_path (the module that
+    // owns the single `attempts` member declaration). Reading that accessor here -- instead of joining
+    // compute_root with a second "/attempts" literal -- is what keeps this write's target and the door's
+    // listing target from drifting apart (single_authority / minimize_redundancy).
+    compute_attempts_dir: compute_attempts_path(instance: instance) as String,
     forced_command_line: serving_forced_command_line(host: host),
             } } } } }
           }
@@ -956,6 +977,13 @@ type ServingObserved {
   // read is an unknown that mints no write.
   scratch_root: ObservationAttempt<Bool, ServingLegFailure>
   scratch_root_mode: ObservationAttempt<String, ServingLegFailure>
+  // Whether the compute attempts directory exists. Presence-only: the census door's Filesystem.List is
+  // the only consumer of this directory, and its correctness input is that the directory EXISTS and is
+  // listable -- the mode is not a census input, and the dir lives inside the account's private 0700
+  // compute root (a separate mode-drift leg would add a refused-read path that could itself strand the
+  // settle without buying census correctness). Absence is a proved PresentAbsent (the apply creates it at
+  // the scratch root's owner/mode); a refused read is an unknown that mints no write.
+  compute_attempts: ObservationAttempt<Bool, ServingLegFailure>
   serve_binary: ObservationAttempt<Bool, ServingLegFailure>
   checkout: ObservationAttempt<Bool, ServingLegFailure>
   // ESTABLISHED TRUE means the PINNED channel (ServingPlanInput.toolchain_channel) is installed —
@@ -1401,6 +1429,7 @@ fn serving_assess_inner(d: RemoteBuildServingDesired, o: ServingObserved, pin: S
             match o.store_root { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "store.root", cause: c.cause }] },
             match o.store_staging { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "store.staging", cause: c.cause }] },
             match o.scratch_root { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "scratch.root", cause: c.cause }] },
+            match o.compute_attempts { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "compute.attempts", cause: c.cause }] },
           ),
         ),
       )
@@ -1429,6 +1458,7 @@ fn serving_assess_inner(d: RemoteBuildServingDesired, o: ServingObserved, pin: S
               serving_present_deviations(item: "store.root", present: o.store_root),
               serving_present_deviations(item: "store.staging", present: o.store_staging),
               serving_present_deviations(item: "scratch.root", present: o.scratch_root),
+              serving_present_deviations(item: "compute.attempts", present: o.compute_attempts),
             ),
             concat(
               serving_present_deviations(item: "seed.serve_binary", present: o.serve_binary),
@@ -1789,6 +1819,7 @@ fn serving_observed_from_reads(
   store_staging_mode: ObservationAttempt<String, ServingLegFailure>,
   scratch_root: ObservationAttempt<Bool, ServingLegFailure>,
   scratch_root_mode: ObservationAttempt<String, ServingLegFailure>,
+  compute_attempts: ObservationAttempt<Bool, ServingLegFailure>,
   serve_binary: ObservationAttempt<Bool, ServingLegFailure>,
   checkout: ObservationAttempt<Bool, ServingLegFailure>,
   toolchain: ObservationAttempt<Bool, ServingLegFailure>,
@@ -1845,6 +1876,7 @@ fn serving_observed_from_reads(
     store_staging_mode: serving_elevation_gate_str(elevation, "store.staging.mode", store_staging_mode),
     scratch_root: serving_elevation_gate_bool(elevation, "scratch.root", scratch_root),
     scratch_root_mode: serving_elevation_gate_str(elevation, "scratch.root.mode", scratch_root_mode),
+    compute_attempts: serving_elevation_gate_bool(elevation, "compute.attempts", compute_attempts),
     serve_binary: serve_binary_g,
     checkout: checkout_g,
     toolchain: serving_elevation_gate_bool(elevation, "toolchain", toolchain),

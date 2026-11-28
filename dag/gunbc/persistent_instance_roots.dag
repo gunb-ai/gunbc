@@ -16,7 +16,7 @@ type PersistentInstanceScope
 
 data materialization_store_persistent_macbook_scope: String = "/Users/briansrls/.local/share/gunbc-macbook-local"
 data materialization_store_persistent_srv2_scope: String = "/home/briansrls/.local/share/gunbc-srv2-deploy"
-// The remote-build account's own instance root (gunbc.compute.remote_build remote_build_serving_instance),
+// The remote-build account's own instance root (gunbc.compute.remote_build_serving_identity remote_build_serving_instance),
 // under that account's home and the same path on every serving host: one host's store is that host's, so
 // equal paths on two machines are two stores, as the srv1 and srv2 /home trees already are.
 fn materialization_store_persistent_remote_build_scope() -> String {

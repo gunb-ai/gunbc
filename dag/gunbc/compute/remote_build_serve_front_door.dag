@@ -299,7 +299,7 @@ fn remote_build_serve_front_door_admission(host: String) -> RemoteBuildDoorAdmis
 // ── THE ENTRY SSHD RUNS ─────────────────────────────────────────────────────────────────────────────
 //
 // THE FORCED COMMAND'S OWN ARGS. The serving binary and the checkout are what the roster says they
-// are (gunbc.compute.remote_build remote_build_serving_instance), rendered into this command by
+// are (gunbc.compute.remote_build_serving_identity remote_build_serving_instance), rendered into this command by
 // remote_build_serve_front_door_run_words beside the serving entry's own words. They are arguments
 // because whoever renders the forced command already chooses them -- the authorized_keys line spells
 // both today -- and the door must not guess them. THE HAND-OFF TARGET IS NOT AN ARGUMENT: which entry
