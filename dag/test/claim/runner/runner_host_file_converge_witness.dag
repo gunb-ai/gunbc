@@ -261,6 +261,9 @@ import gunbc.runner.runner_host_file_converge {
   DeploySlotAccountReadPresent, DeploySlotAccountReadUnreadable,
   RunnerSpecAccountReadPresent, RunnerSpecAccountReadUnreadable,
   RunnerSpecAccountUnanswered,
+  RunnerSpecAccountStanding,
+  runner_spec_account_line,
+  runner_host_file_run_text,
   deploy_slot_account_line, deploy_slot_account_is_held,
 }
 import extdeps.systemd.unit_file { systemd_drop_in_applies_after }
@@ -2531,4 +2534,44 @@ test fn an_unanswered_masked_retiree_cgroup_batch_is_not_read_completely() -> Bo
   let population = SlotPopulationObserved { units: [RunnerSlotUnitResult { unit: "actions-runner@srv1-01.service" as NonEmptyStr, standing: unread_batch, reload: SlotReloadNotPending, reach: ReachesLiveCgroup }] }
   standing_wire_of(st: unread_batch) == "retirement-unobserved"
     && !runner_slot_population_read_completely(population: population)
+}
+
+// item 5 (round-4 sweep): runner_host_file_run_text now renders run.spec_accounts. A DISPATCHED-UNKNOWN
+// (Unanswered) spec account must render its dispatched/effect-unknown standing and cause, in BOTH apply
+// and observe, and must never be rendered as MISSING/absent/not-created. Drives the production
+// renderer runner_spec_account_line through runner_host_file_run_text.
+fn spec_account_run_text(mode: FleetHostFileConvergeMode, standing: RunnerSpecAccountStanding) -> String {
+  match witness_subject() {
+    Absent => ""
+    Present { value: s } => runner_host_file_run_text(run: RunnerHostFileRun {
+      subject: s,
+      mode: mode,
+      privilege: AdministratorPrivilegeAvailable,
+      results: [],
+      withheld: [],
+      pre_actuation_reload: ManagerReloaded,
+      actuation_admission: ActuationAdmitted,
+      actuations: [],
+      residue: ResidueAlreadyAbsent,
+      reload: ManagerReloadNotOwed,
+      slots: population_of(standings: [SlotTeardownEffective]),
+      cap_phase: runner_host_cap_phase_not_owed,
+      deploy_account: HostHasNoDeploySlot,
+      spec_accounts: [standing],
+      slot_trees: [],
+      superseded: [],
+      deploy_readings: [],
+    })
+  }
+}
+
+test fn the_run_text_renders_a_dispatched_unknown_spec_account_not_as_absence() -> Bool {
+  let unanswered = RunnerSpecAccountUnanswered { login: "ghrunner", cause: "the account-creation leg was dispatched; the getent readback could not read the account, so its existence is unknown: getent unreadable" }
+  let apply_text = spec_account_run_text(mode: FleetHostFilesApply, standing: unanswered)
+  let observe_text = spec_account_run_text(mode: FleetHostFilesObserveOnly, standing: unanswered)
+  string_contains(s: apply_text, pattern: "ghrunner DISPATCHED-EFFECT-UNKNOWN")
+    && string_contains(s: apply_text, pattern: "the account-creation leg was dispatched")
+    && !string_contains(s: apply_text, pattern: "ghrunner MISSING")
+    && string_contains(s: observe_text, pattern: "ghrunner DISPATCHED-EFFECT-UNKNOWN")
+    && !string_contains(s: observe_text, pattern: "ghrunner MISSING")
 }

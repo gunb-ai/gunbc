@@ -5532,6 +5532,19 @@ fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
 }
 
 // A spec account has SETTLED when the host carries it: read present, or created and read back.
+// Render one spec-account standing as a receipt line. An Unanswered arm says the create was
+// DISPATCHED and its effect is unknown -- never "absent", "not created", "not run", or "refused
+// before"; an Unread arm says existence was not established and nothing was dispatched. (#17119 item 5.)
+fn runner_spec_account_line(a: RunnerSpecAccountStanding) -> String {
+  concat("spec-account ", match a {
+    RunnerSpecAccountPresent { login: l, uid: u } => concat(l as String, " present uid=", to_string(u))
+    RunnerSpecAccountCreated { login: l, uid: u } => concat(l as String, " created uid=", to_string(u))
+    RunnerSpecAccountMissing { login: l, cause: c } => concat(l as String, " MISSING: ", c as String)
+    RunnerSpecAccountUnanswered { login: l, cause: c } => concat(l as String, " DISPATCHED-EFFECT-UNKNOWN: ", c as String)
+    RunnerSpecAccountUnread { login: l, cause: c } => concat(l as String, " UNREAD, existence not established, nothing dispatched: ", c as String)
+  }, "\n")
+}
+
 // Missing is never settled -- it covers absent-with-cause and unreadable alike, and neither is a
 // host that carries the account the spec names.
 fn runner_spec_account_settled(a: RunnerSpecAccountStanding) -> Bool {
@@ -5582,6 +5595,7 @@ fn runner_host_file_run_text(run: RunnerHostFileRun) -> String {
     " endpoint=", ssh_target_wire(target: run.subject.target) as String, "\n",
     "administrator-privilege=", runner_host_privilege_wire(privilege: run.privilege), "\n",
     deploy_slot_account_line(standing: run.deploy_account),
+    join(map(run.spec_accounts, a => runner_spec_account_line(a: a)), ""),
     join(map(run.slot_trees, t => concat(runner_slot_tree_line(standing: t), "\n")), ""),
     join(map(run.results, r => runner_host_file_result_line(r: r)), ""),
     join(map(run.superseded, r => concat(superseded_dropin_line(r: r), "\n")), ""),
