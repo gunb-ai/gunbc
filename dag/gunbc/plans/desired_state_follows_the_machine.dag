@@ -95,4 +95,6 @@ data desired_state_follows_the_machine_plan: Plan = Plan {
 // a claim with a read by (host, axis) and carries no device or slot qualifier to tell two claims on one
 // axis apart. Closing that is a change to the read (row fleet-truth-per-host-read), owed through the lane
 // manager; until it lands, the doubled-axis specimen stays unstatable rather than guessed at
-// (gunbc.design_argument::fail_closed).
+// (gunbc.design_argument::fail_closed). That owed reconciliation is RECORDED, not remembered: it is a
+// row of the integration register, #gunbc.integration_concern.fleet_host_truth_pairing_keys_on_axis_alone_so_two_claims_on_one_axis_cannot_be_told_apart::fleet_host_truth_pairing_keys_on_axis_alone_so_two_claims_on_one_axis_cannot_be_told_apart, carrying the question, the obligations a widening
+// must keep, and the trigger that would climb a rung (continuous_generalization).

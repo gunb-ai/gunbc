@@ -229,7 +229,8 @@ test fn RED_a_claim_with_no_current_read_refuses_rather_than_admits() -> Bool {
 // than being quietly deleted. Unlocking the pair -- pairing by host, axis AND qualifier, so the doubled
 // specimen becomes expressible and the read module's own duplicate-declaration arm decides -- is a standing
 // change to gunbc.fleet.fleet_host_truth_read (row fleet-truth-per-host-read), owed through the lane
-// manager, not invented here against another row's bytes.
+// manager and recorded in the integration register as #gunbc.integration_concern.fleet_host_truth_pairing_keys_on_axis_alone_so_two_claims_on_one_axis_cannot_be_told_apart::fleet_host_truth_pairing_keys_on_axis_alone_so_two_claims_on_one_axis_cannot_be_told_apart, not invented here against
+// another row's bytes.
 test fn RED_a_drifted_axis_blocks_a_host_whose_other_axis_agrees() -> Bool {
   let result = desired_state_follows_the_machine(
     host: "srv4" as NonEmptyStr,

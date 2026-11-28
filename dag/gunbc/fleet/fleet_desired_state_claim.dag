@@ -188,9 +188,12 @@ fn model_claims_axes_present(claims: ModelClaims) -> List<HostTruthAxis> {
 // predicate (fleet_truth_admits_host): ONLY Follows admits; a host with no read at all answers
 // NothingRead and is not admitted (gunbc.design_argument::fail_closed). This row's half is that the
 // claims are typed, per axis, and that the entry is one seam a consumer calls, not five.
-// TODO fleet-truth-follows-the-machine (owed to the read module, not this row's to edit): pair by
-// (host, axis, qualifier) so one device and one slot carry several claims each. While that is not
-// the case this carrier holds one claim per axis, and the doubled-axis specimen stays unstatable.
+// THE OWED CHANGE, RECORDED RATHER THAN REMEMBERED: it is a row of the integration register,
+// #gunbc.integration_concern.fleet_host_truth_pairing_keys_on_axis_alone_so_two_claims_on_one_axis_cannot_be_told_apart::fleet_host_truth_pairing_keys_on_axis_alone_so_two_claims_on_one_axis_cannot_be_told_apart, whose disposition names the next rung and the obligations a widening must keep
+// (review 99591 asked for exactly this: an unfinished reconciliation belongs in its owning record, not
+// only in prose). Read that row before widening anything: the carrier's one-claim-per-axis restriction
+// must be RELAXED in the same change that gives the read a qualifier key, so one duplicate authority
+// remains and this module keeps no guard of its own.
 fn desired_state_follows_the_machine(host: NonEmptyStr, claims: ModelClaims, reads: List<HostTruthRead>) -> HostTruthVerdict {
   fleet_host_truth_verdict_for_host(
     host: host,
