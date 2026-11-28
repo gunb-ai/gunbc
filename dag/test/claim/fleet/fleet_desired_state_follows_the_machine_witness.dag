@@ -7,8 +7,10 @@ module test.claim.fleet.fleet_desired_state_follows_the_machine_witness
 // fleet-truth-follows-the-machine's half: that the model's five claims each keep their own axis, that the
 // seam desired_state_follows_the_machine refuses where a read disagrees -- naming the arm that diverged --
 // and that a host with no current read is refused rather than admitted on the model alone
-// (gunbc.design_argument::fail_closed). The roster wiring that CONSUMES this seam is a different, unstaffed
-// row (fleet-truth-rosters-consume-the-read); these claims stop at the seam on purpose.
+// (gunbc.design_argument::fail_closed). The subject is gunbc.fleet.fleet_desired_state_claim, the model-side
+// module the plan gunbc.plans.desired_state_follows_the_machine cites but does not hold. The roster wiring
+// that CONSUMES this seam is a different, unstaffed row (fleet-truth-rosters-consume-the-read); these claims
+// stop at the seam on purpose.
 
 import std.types { Bool, NonEmptyStr, String }
 import std.nat { Nat }
@@ -22,7 +24,7 @@ import gunbc.fleet.fleet_host_truth_read {
   TruthCapBindsDeclaredWorkingSet, TruthSlotSwapBackingDeclared,
   host_truth_axis_rule,
 }
-import gunbc.plans.desired_state_follows_the_machine {
+import gunbc.fleet.fleet_desired_state_claim {
   ModelAxisClaim, EnumeratedHardware, EnabledUnits, HostKey, LeafCap, SwapBacking,
   FollowsTheMachine, ModelAgrees, ModelDiverges, ModelRefused, ModelUnread,
   model_claim_axis, desired_state_follows_the_machine,
@@ -64,11 +66,11 @@ fn names_axis(result: FollowsTheMachine, axis: HostTruthAxis) -> Bool {
 // collapsed onto another cannot pass this, which is what keeps the five remedies distinguishable.
 test fn the_model_holds_five_distinct_axes() -> Bool {
   let claims = [
-    EnumeratedHardware { host: "butch" as NonEmptyStr, device_class: "nvidia", count: 4 },
-    EnabledUnits { host: "dan" as NonEmptyStr, unit: "strata-expert-lock", hardware_enumerates: true },
-    HostKey { host: "butch" as NonEmptyStr, enrolled_fingerprint: "SHA256:anchor" },
-    LeafCap { host: "srv4" as NonEmptyStr, role: "expert", working_set: size_bytes(gib: 56) },
-    SwapBacking { host: "butch" as NonEmptyStr, slot: "runner-slot", backing: unbounded_val() },
+    EnumeratedHardware { device_class: "nvidia", count: 4, declared_by: "the serving layout's pool row" },
+    EnabledUnits { unit: "strata-expert-lock", hardware_enumerates: true, declared_by: "the unit file under systemd" },
+    HostKey { enrolled_fingerprint: "SHA256:anchor", declared_by: "the enrolled host-key roster" },
+    LeafCap { role: "expert", working_set: size_bytes(gib: 56), declared_by: "the serving grant's slot" },
+    SwapBacking { slot: "runner-slot", backing: unbounded_val(), declared_by: "the runner memory envelope" },
   ]
   let rules = claims.map(claim => host_truth_axis_rule(axis: model_claim_axis(claim: claim)))
   rules.length() == 5
@@ -81,7 +83,7 @@ test fn the_model_holds_five_distinct_axes() -> Bool {
 test fn RED_enumerated_hardware_no_longer_enumerating_diverges_and_names_its_arm() -> Bool {
   let result = desired_state_follows_the_machine(
     host: "butch" as NonEmptyStr,
-    claims: [EnumeratedHardware { host: "butch" as NonEmptyStr, device_class: "nvidia", count: 4 }],
+    claims: [EnumeratedHardware { device_class: "nvidia", count: 4, declared_by: "the serving layout's pool row" }],
     reads: [obs(host: "butch" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, value: count_val(n: 0))],
   )
   admits(result: result) == false && names_axis(result: result, axis: TruthDeclaredHardwareEnumerates)
@@ -92,7 +94,7 @@ test fn RED_enumerated_hardware_no_longer_enumerating_diverges_and_names_its_arm
 test fn RED_enabled_unit_over_absent_hardware_diverges_and_names_its_arm() -> Bool {
   let result = desired_state_follows_the_machine(
     host: "dan" as NonEmptyStr,
-    claims: [EnabledUnits { host: "dan" as NonEmptyStr, unit: "strata-expert-lock", hardware_enumerates: true }],
+    claims: [EnabledUnits { unit: "strata-expert-lock", hardware_enumerates: true, declared_by: "the unit file under systemd" }],
     reads: [obs(host: "dan" as NonEmptyStr, axis: TruthEnabledUnitHasItsHardware, value: mark_val(text: "strata-expert-lock enabled with its hardware absent"))],
   )
   admits(result: result) == false && names_axis(result: result, axis: TruthEnabledUnitHasItsHardware)
@@ -103,7 +105,7 @@ test fn RED_enabled_unit_over_absent_hardware_diverges_and_names_its_arm() -> Bo
 test fn RED_presented_host_key_not_the_enrolled_anchor_diverges_and_names_its_arm() -> Bool {
   let result = desired_state_follows_the_machine(
     host: "butch" as NonEmptyStr,
-    claims: [HostKey { host: "butch" as NonEmptyStr, enrolled_fingerprint: "SHA256:enrolled-anchor-AAA" }],
+    claims: [HostKey { enrolled_fingerprint: "SHA256:enrolled-anchor-AAA", declared_by: "the enrolled host-key roster" }],
     reads: [obs(host: "butch" as NonEmptyStr, axis: TruthIdentityAnchoredNotAddressed, value: mark_val(text: "SHA256:previous-occupant-BBB"))],
   )
   admits(result: result) == false && names_axis(result: result, axis: TruthIdentityAnchoredNotAddressed)
@@ -114,7 +116,7 @@ test fn RED_presented_host_key_not_the_enrolled_anchor_diverges_and_names_its_ar
 test fn RED_leaf_cap_below_declared_working_set_diverges_and_names_its_arm() -> Bool {
   let result = desired_state_follows_the_machine(
     host: "srv4" as NonEmptyStr,
-    claims: [LeafCap { host: "srv4" as NonEmptyStr, role: "expert", working_set: size_bytes(gib: 56) }],
+    claims: [LeafCap { role: "expert", working_set: size_bytes(gib: 56), declared_by: "the serving grant's slot" }],
     reads: [obs(host: "srv4" as NonEmptyStr, axis: TruthCapBindsDeclaredWorkingSet, value: size_val(gib: 40))],
   )
   admits(result: result) == false && names_axis(result: result, axis: TruthCapBindsDeclaredWorkingSet)
@@ -125,7 +127,7 @@ test fn RED_leaf_cap_below_declared_working_set_diverges_and_names_its_arm() -> 
 test fn RED_swap_backing_mismatch_diverges_and_names_its_arm() -> Bool {
   let result = desired_state_follows_the_machine(
     host: "butch" as NonEmptyStr,
-    claims: [SwapBacking { host: "butch" as NonEmptyStr, slot: "runner-slot", backing: unbounded_val() }],
+    claims: [SwapBacking { slot: "runner-slot", backing: unbounded_val(), declared_by: "the runner memory envelope" }],
     reads: [obs(host: "butch" as NonEmptyStr, axis: TruthSlotSwapBackingDeclared, value: size_val(gib: 8))],
   )
   admits(result: result) == false && names_axis(result: result, axis: TruthSlotSwapBackingDeclared)
@@ -137,7 +139,7 @@ test fn RED_swap_backing_mismatch_diverges_and_names_its_arm() -> Bool {
 test fn RED_a_claim_with_no_current_read_refuses_rather_than_admits() -> Bool {
   let result = desired_state_follows_the_machine(
     host: "butch" as NonEmptyStr,
-    claims: [EnumeratedHardware { host: "butch" as NonEmptyStr, device_class: "nvidia", count: 4 }],
+    claims: [EnumeratedHardware { device_class: "nvidia", count: 4, declared_by: "the serving layout's pool row" }],
     reads: [],
   )
   admits(result: result) == false && names_axis(result: result, axis: TruthDeclaredHardwareEnumerates)
@@ -147,7 +149,7 @@ test fn RED_a_claim_with_no_current_read_refuses_rather_than_admits() -> Bool {
 test fn a_host_whose_read_matches_every_claim_agrees_and_admits() -> Bool {
   let result = desired_state_follows_the_machine(
     host: "srv3" as NonEmptyStr,
-    claims: [EnumeratedHardware { host: "srv3" as NonEmptyStr, device_class: "nvidia", count: 4 }],
+    claims: [EnumeratedHardware { device_class: "nvidia", count: 4, declared_by: "the build roster's slot row" }],
     reads: [obs(host: "srv3" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, value: count_val(n: 4))],
   )
   admits(result: result) == true && names_axis(result: result, axis: TruthDeclaredHardwareEnumerates) == false
@@ -159,8 +161,8 @@ test fn RED_a_drifted_axis_blocks_a_host_whose_other_axis_agrees() -> Bool {
   let result = desired_state_follows_the_machine(
     host: "srv4" as NonEmptyStr,
     claims: [
-      EnumeratedHardware { host: "srv4" as NonEmptyStr, device_class: "nvidia", count: 4 },
-      LeafCap { host: "srv4" as NonEmptyStr, role: "expert", working_set: size_bytes(gib: 56) },
+      EnumeratedHardware { device_class: "nvidia", count: 4, declared_by: "the serving layout's pool row" },
+      LeafCap { role: "expert", working_set: size_bytes(gib: 56), declared_by: "the serving grant's slot" },
     ],
     reads: [
       obs(host: "srv4" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, value: count_val(n: 4)),
