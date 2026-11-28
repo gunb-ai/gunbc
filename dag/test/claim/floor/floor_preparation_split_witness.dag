@@ -1133,7 +1133,7 @@ fn bound_operand_refuses(bound: Second) -> Bool {
 
 test fn floor_preparation_the_wall_bound_is_a_typed_second() -> Bool {
   bound_operand_renders(bound: floor_preparation_untrimmed_bound(), digits: "14400")
-    && bound_operand_renders(bound: floor_preparation_graded_bound(), digits: "1200")
+    && bound_operand_renders(bound: floor_preparation_graded_bound(), digits: "10800")
     && bound_operand_renders(bound: floor_preparation_claims_bound(), digits: "900")
     && bound_operand_renders(bound: floor_preparation_report_bound(), digits: "600")
     && bound_operand_refuses(bound: second(count: 2400000))
