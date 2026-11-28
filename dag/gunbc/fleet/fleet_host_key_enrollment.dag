@@ -48,9 +48,6 @@ import gunbc.fleet.fleet_host_truth_read {
   HostTruthReadBlank,
   TruthIdentityAnchoredNotAddressed,
   TruthMarking,
-  TruthSize,
-  TruthUnbounded,
-  TruthCount,
   TruthDivergent,
   host_truth_compare,
   host_truth_divergence_locator,
@@ -535,7 +532,7 @@ fn host_key_anchor_readback(
 ) -> HostTruthComparison {
   let host_text = (host as String) as NonEmptyStr
   let expectation = host_key_anchor_expectation(host: host, declared_by: declared_by)
-  match host_truth_compare(
+  host_truth_compare(
     read: match presented_fingerprint {
       Present { value: printed } => HostTruthObserved {
         host: host_text,
@@ -561,20 +558,35 @@ fn host_key_anchor_readback_wire(host: HostIdentity, comparison: HostTruthCompar
   }), " | ")
   match comparison {
     TruthDivergent { observed: got, expected: wants, declared_by: d } =>
-      join(["KEY MISMATCH host=", host as String, " enrolled_anchor=", anchors, " anchor_fingerprint=", host_truth_marking_text(value: wants), " presented_fingerprint=", host_truth_marking_text(value: got), " anchor_authority=", d, " REFUSED: ", host_truth_divergence_locator(comparison: comparison)], "")
+      match host_key_anchor_fingerprint_pair(observed: got, expected: wants) {
+        BothFingerprintsNamed { anchor_fingerprint: a, presented_fingerprint: p } =>
+          join(["KEY MISMATCH host=", host as String, " enrolled_anchor=", anchors, " anchor_fingerprint=", a, " presented_fingerprint=", p, " anchor_authority=", d, " both_fingerprints_named=yes REFUSED: ", host_truth_divergence_locator(comparison: comparison)], "")
+        DivergenceCarriesNoMarking =>
+          join(["REFUSED host=", host as String, " reason=identity_divergence_carries_no_marking_on_both_sides fingerprint_fields_printed=none enrolled_anchor_rows=", to_string(length(enrolled_anchor_rows_for(host: host))), " ", host_truth_divergence_locator(comparison: comparison)], "")
+      }
     _ =>
       join(["host=", host as String, " anchors=", if length(anchors) == 0 { "none" } else { anchors }, " ", host_truth_divergence_locator(comparison: comparison)], "")
   }
 }
 
-// The axis this readback runs on relates markings, so anything else arriving here is a projection bug in
-// the caller; saying so is cheaper than a caller reading an empty string as "the machine answered nothing".
-fn host_truth_marking_text(value: HostTruthValue) -> String {
-  match value {
-    TruthMarking { text: t } => t
-    TruthSize { size: _ } => "a size, which the identity axis never carries"
-    TruthUnbounded => "an unbounded value, which the identity axis never carries"
-    TruthCount { count: _ } => "a count, which the identity axis never carries"
+// THE TWO FINGERPRINTS THE HANDBACK NAMES, or the typed reason there are none to name. NARROWED ON
+// PURPOSE: the output coproduct has no arm that could carry a non-marking as a fingerprint, so the shape
+// that is not a marking cannot print a field a log parser would read as one. A comment in the first
+// version of this fn called those arms "a projection bug in the caller" and then printed a sentence in
+// the fingerprint slot anyway -- gunbc.design_argument::fail_closed names that a plausible-looking
+// fabricated field, a hard reject, not a comment to live beside. What reaches a caller now is either two
+// fingerprints or a refusal that says no fingerprint is printed and why.
+type HostKeyAnchorFingerprintPair
+  = BothFingerprintsNamed { anchor_fingerprint: String, presented_fingerprint: String }
+  | DivergenceCarriesNoMarking
+
+fn host_key_anchor_fingerprint_pair(observed: HostTruthValue, expected: HostTruthValue) -> HostKeyAnchorFingerprintPair {
+  match observed {
+    TruthMarking { text: got } => match expected {
+      TruthMarking { text: wants } => BothFingerprintsNamed { anchor_fingerprint: wants, presented_fingerprint: got }
+      _ => DivergenceCarriesNoMarking
+    }
+    _ => DivergenceCarriesNoMarking
   }
 }
 
