@@ -1,0 +1,110 @@
+module test.claim.sig_unresolved_fallthrough_witness
+
+import std.types { String, Bool }
+import std.algebra { count_where }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows,
+  fixture_has_class,
+}
+
+import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
+import gunbc.recurring_failure_mode.unresolved_signature_skips_call_shape_judgment {
+  unresolved_signature_skips_call_shape_judgment,
+}
+
+// THE SIG-UNRESOLVED CALL-SHAPE BLIND SPOT: the discriminating controls and the typed carrier link.
+//
+// WHAT THIS MODULE IS. Two discriminating controls over the direct-call shape wall and one leg
+// binding this module to its typed carrier: the recurring failure mode row
+// `gunbc.recurring_failure_mode.unresolved_signature_skips_call_shape_judgment`. This module
+// IMPORTS that row module, so a rename of the class is a compile error here; the roster leg
+// additionally refuses if the row leaves the roster or its identity drifts. The roadmap node is
+// `call-signature-resolution-coverage` (dag/gunbc/roadmap/roadmap_authority.dag).
+//
+// WHAT THIS MODULE IS NOT. It does NOT assert the bug as the expected result. The blind spot is
+// a mislabeled call to an UNIMPORTED, UNDECLARED kernel method template name compiling clean:
+// the callee resolves no signature, the direct-call shape wall is gated on sig Present, and the
+// call falls through to the method bridge, which binds positionally and never checks labels.
+// A leg that greened while that happened would be the bug enrolled as an asset -- green only
+// while the compiler stays wrong, red the day the compiler improves. Such a leg existed in an
+// earlier revision of this file and was DELETED (reviews 98080/98112;
+// gunbc.design_argument::fail_closed: silent wrongness is below the ladder and forbidden
+// outright). The blind spot is carried by the ROW, not by a passing assertion, and the row --
+// not this module -- states the class, its rung, and its bounded dissolution.
+//
+// THE TWO CONTROLS are the discriminating pair: the locally-declared mislabeled call is REFUSED
+// (CallArgumentNameUnknown -- the compiler IS capable at the shape layer when the sig resolves)
+// and the correctly-labeled call is ACCEPTED (the wall does not over-refuse). Both pass at main
+// and must keep passing when the hole closes; they are controls on the wall, not on the hole.
+// The twin is LOCALLY DECLARED, not imported: compile_fixture compiles in isolation with no
+// module index, so imports cannot resolve there -- the name and comments say what the data is
+// (review 98085; the earlier "imported twin" wording named a route this fixture cannot run).
+//
+// NO CENSUS IS FILED OR COMPUTED HERE. An earlier revision carried a repo-wide fallthrough
+// census (first a committed TSV + shell producer, then a run-time .dag census leg). Both were
+// retired under gunbc.design_argument::how_to_work (repo-wide census/audit machinery without a
+// concrete retained consumer is retired; raw shell implementing semantics expressible in .dag is
+// presumed scaffold) and gunbc.design_argument::consumption (a number no one reads is dangling),
+// and a text-matching count could not carry the semantic-resolution claim anyway ("a negative
+// match is not a semantic absence proof"). The size of the blind spot was delivered as
+// MEASUREMENT IN THE NODE'S REPORTS, not as a committed or recomputed projection; the row's
+// dissolution is bounded by the behavioral fact (the unimported mislabeled call refusing with a
+// located call-shape cause), not by a count.
+
+// ---------------------------------------------------------------------------
+// THE CONTROLS: the discriminating pair (refusal-capable, not over-refusing).
+// ---------------------------------------------------------------------------
+
+data locally_declared_mislabel_entry: String = "module suft.green\nfn length(xs: List<Int>) -> Int { 0 }\nfn probe(xs: List<Int>) -> Int { length(wrong_label: xs) }\n"
+
+data locally_declared_correct_entry: String = "module suft.control\nfn length(xs: List<Int>) -> Int { 0 }\nfn probe(xs: List<Int>) -> Int { length(xs: xs) }\n"
+
+fn compile_probe(entry: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("suft/probe.dag", entry)],
+    entry: "suft/probe.dag"
+  })
+}
+
+test fn locally_declared_kernel_name_mislabeled_call_is_refused() -> Bool {
+  match compile_probe(locally_declared_mislabel_entry) {
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      fixture_has_class(rows: rows, wanted: "CallArgumentNameUnknown")
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      fixture_has_class(rows: rows, wanted: "CallArgumentNameUnknown")
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+test fn locally_declared_correctly_labeled_call_compiles_clean() -> Bool {
+  match compile_probe(locally_declared_correct_entry) {
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      count(fixture_blocking_rows(rows: rows)) == 0
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE TYPED CARRIER LINK: the class row is rostered and carries the identity this module
+// imports it under, EXACTLY ONCE. The import makes a rename a COMPILE failure; the roster
+// is DERIVED at compile time from the row directory (src/v1/stage0/src/cli_run/
+// derived_row_roster.rs: rows are imported by file stem), so a deleted row, or one whose
+// declared identity drifts from the identity this module imports, drops out of the roster
+// and reddens this leg -- and a DUPLICATED row makes the count two and also reddens it
+// (== 1, not > 0; multiplicity is a defect, not a pass, per the identity-keyed roster
+// growth #17029). The executed negative case -- row identity drifted in the run tree, leg
+// observed FAIL while the controls stay PASS -- is posted in the PR run link.
+// ---------------------------------------------------------------------------
+
+test fn class_row_is_rostered_with_matching_identity() -> Bool {
+  count_where(xs: recurring_failure_mode_roster,
+    predicate: r => (r.identity as String) == (unresolved_signature_skips_call_shape_judgment.identity as String)) == 1
+}
